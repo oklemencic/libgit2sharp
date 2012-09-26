@@ -18,15 +18,10 @@ namespace LibGit2Sharp
         protected Remote()
         { }
 
-        internal static Remote CreateFromPtr(RemoteSafeHandle handle)
+        internal static Remote BuildFromPtr(RemoteSafeHandle handle)
         {
-            if (handle == null)
-            {
-                return null;
-            }
-
-            string name = NativeMethods.git_remote_name(handle);
-            string url = NativeMethods.git_remote_url(handle);
+            string name = Proxy.git_remote_name(handle);
+            string url = Proxy.git_remote_url(handle);
 
             var remote = new Remote
                              {

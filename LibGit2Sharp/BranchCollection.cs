@@ -13,7 +13,7 @@ namespace LibGit2Sharp
     /// </summary>
     public class BranchCollection : IEnumerable<Branch>
     {
-        private readonly Repository repo;
+        internal readonly Repository repo;
 
         /// <summary>
         ///   Needed for mocking purposes.
@@ -101,7 +101,7 @@ namespace LibGit2Sharp
 
             public BranchNameEnumerable(RepositorySafeHandle handle, GitBranchType gitBranchType)
             {
-                Ensure.Success(NativeMethods.git_branch_foreach(handle, gitBranchType, Callback, IntPtr.Zero));
+                Proxy.git_branch_foreach(handle, gitBranchType, Callback);
             }
 
             private int Callback(IntPtr branchName, GitBranchType branchType, IntPtr payload)
@@ -137,20 +137,15 @@ namespace LibGit2Sharp
         ///   Create a new local branch with the specified name
         /// </summary>
         /// <param name = "name">The name of the branch.</param>
-        /// <param name = "commitish">Revparse spec for the target commit.</param>
+        /// <param name = "commit">The target commit.</param>
         /// <param name = "allowOverwrite">True to allow silent overwriting a potentially existing branch, false otherwise.</param>
-        /// <returns></returns>
-        public virtual Branch Add(string name, string commitish, bool allowOverwrite = false)
+        /// <returns>A new <see cref="Branch"/>.</returns>
+        public virtual Branch Add(string name, Commit commit, bool allowOverwrite = false)
         {
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
+            Ensure.ArgumentNotNull(commit, "commit");
 
-            ObjectId commitId = repo.LookupCommit(commitish).Id;
-
-            using (var osw = new ObjectSafeWrapper(commitId, repo))
-            {
-                GitOid oid;
-                Ensure.Success(NativeMethods.git_branch_create(out oid, repo.Handle, name, osw.ObjectPtr, allowOverwrite));
-            }
+            Proxy.git_branch_create(repo.Handle, name, commit.Id, allowOverwrite);
 
             return this[ShortToLocalName(name)];
         }
@@ -165,26 +160,21 @@ namespace LibGit2Sharp
         [Obsolete("This method will be removed in the next release. Please use Add() instead.")]
         public virtual Branch Create(string name, string commitish, bool allowOverwrite = false)
         {
-            return Add(name, commitish, allowOverwrite);
+            return this.Add(name, commitish, allowOverwrite);
         }
 
         /// <summary>
-        ///   Deletes the branch with the specified name.
+        ///   Deletes the specified branch.
         /// </summary>
-        /// <param name = "name">The name of the branch to delete.</param>
-        /// <param name = "isRemote">True if the provided <paramref name="name"/> is the name of a remote branch, false otherwise.</param>
-        public virtual void Remove(string name, bool isRemote = false)
+        /// <param name = "branch">The branch to delete.</param>
+        public virtual void Remove(Branch branch)
         {
-            Ensure.ArgumentNotNullOrEmptyString(name, "name");
+            Ensure.ArgumentNotNull(branch, "branch");
 
-            int res = NativeMethods.git_branch_delete(repo.Handle, name, isRemote ? GitBranchType.GIT_BRANCH_REMOTE : GitBranchType.GIT_BRANCH_LOCAL);
-
-            if (res == (int)GitErrorCode.NotFound)
+            using (ReferenceSafeHandle referencePtr = repo.Refs.RetrieveReferencePtr(branch.CanonicalName))
             {
-                return;
+                Proxy.git_branch_delete(referencePtr);
             }
-
-            Ensure.Success(res);
         }
 
         /// <summary>
@@ -195,22 +185,30 @@ namespace LibGit2Sharp
         [Obsolete("This method will be removed in the next release. Please use Remove() instead.")]
         public virtual void Delete(string name, bool isRemote = false)
         {
-            Remove(name, isRemote);
+            this.Remove(name, isRemote);
         }
 
-        ///<summary>
-        ///  Rename an existing local branch with a new name.
-        ///</summary>
-        ///<param name = "currentName">The current branch name.</param>
-        ///<param name = "newName">The new name of the existing branch should bear.</param>
-        ///<param name = "allowOverwrite">True to allow silent overwriting a potentially existing branch, false otherwise.</param>
-        ///<returns></returns>
-        public virtual Branch Move(string currentName, string newName, bool allowOverwrite = false)
+        /// <summary>
+        ///   Renames an existing local branch with a new name.
+        /// </summary>
+        /// <param name = "branch">The current local branch.</param>
+        /// <param name = "newName">The new name the existing branch should bear.</param>
+        /// <param name = "allowOverwrite">True to allow silent overwriting a potentially existing branch, false otherwise.</param>
+        /// <returns>A new <see cref="Branch"/>.</returns>
+        public virtual Branch Move(Branch branch, string newName, bool allowOverwrite = false)
         {
-            Ensure.ArgumentNotNullOrEmptyString(currentName, "currentName");
-            Ensure.ArgumentNotNullOrEmptyString(newName, "name");
+            Ensure.ArgumentNotNull(branch, "branch");
+            Ensure.ArgumentNotNullOrEmptyString(newName, "newName");
 
-            Ensure.Success(NativeMethods.git_branch_move(repo.Handle, currentName, newName, allowOverwrite));
+            if (branch.IsRemote)
+            {
+                throw new LibGit2SharpException(string.Format("Cannot rename branch '{0}'. It's a remote tracking branch.", branch.Name));
+            }
+
+            using (ReferenceSafeHandle referencePtr = repo.Refs.RetrieveReferencePtr("refs/heads/" + branch.Name))
+            {
+                Proxy.git_branch_move(referencePtr, newName, allowOverwrite);
+            }
 
             return this[newName];
         }

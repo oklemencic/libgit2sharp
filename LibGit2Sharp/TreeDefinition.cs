@@ -147,7 +147,8 @@ namespace LibGit2Sharp
         ///   Adds or replaces a <see cref="TreeEntryDefinition"/>, dynamically built from the content of the file, at the specified <paramref name="targetTreeEntryPath"/> location.
         /// </summary>
         /// <param name="targetTreeEntryPath">The path within this <see cref="TreeDefinition"/>.</param>
-        /// <param name="filePath">The path to the file from which a <see cref="Blob"/> will be built and stored at the described location.</param>
+        /// <param name="filePath">The path to the file from which a <see cref="Blob"/> will be built and stored at the described location. A relative path is allowed to be passed if the target
+        /// <see cref="Repository" /> is a standard, non-bare, repository. The path will then be considered as a path relative to the root of the working directory.</param>
         /// <param name="mode">The file related <see cref="Mode"/> attributes.</param>
         /// <returns>The current <see cref="TreeDefinition"/>.</returns>
         public TreeDefinition Add(string targetTreeEntryPath, string filePath, Mode mode)
@@ -317,22 +318,17 @@ namespace LibGit2Sharp
 
             public TreeBuilder()
             {
-                Ensure.Success(NativeMethods.git_treebuilder_create(out handle, IntPtr.Zero));
+                handle = Proxy.git_treebuilder_create();
             }
 
             public void Insert(string name, TreeEntryDefinition treeEntryDefinition)
             {
-                GitOid oid = treeEntryDefinition.TargetId.Oid;
-
-                Ensure.Success(NativeMethods.git_treebuilder_insert(IntPtr.Zero, handle, name, ref oid, (uint)treeEntryDefinition.Mode));
+                Proxy.git_treebuilder_insert(handle, name, treeEntryDefinition);
             }
 
             public ObjectId Write(Repository repo)
             {
-                GitOid oid;
-                Ensure.Success(NativeMethods.git_treebuilder_write(out oid, repo.Handle, handle));
-
-                return new ObjectId(oid);
+                return Proxy.git_treebuilder_write(repo.Handle, handle);
             }
 
             public void Dispose()

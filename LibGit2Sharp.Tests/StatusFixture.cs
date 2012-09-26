@@ -23,7 +23,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(StandardTestRepoPath))
             {
-                Assert.Throws<LibGit2SharpException>(() => { FileStatus status = repo.Index.RetrieveStatus("1"); });
+                Assert.Throws<AmbiguousException>(() => { FileStatus status = repo.Index.RetrieveStatus("1"); });
             }
         }
 
@@ -239,6 +239,24 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal(FileStatus.Ignored, repo.Index.RetrieveStatus(relativePath));
                 Assert.Equal(new[] { relativePath, "new_untracked_file.txt" }, newStatus.Ignored);
+            }
+        }
+
+        [Fact]
+        public void RetrievingTheStatusOfAnAmbiguousFileThrows()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                string relativePath = Path.Combine("1", "ambiguous1.txt");
+                string fullFilePath = Path.Combine(repo.Info.WorkingDirectory, relativePath);
+                File.WriteAllText(fullFilePath, "I don't like brackets.");
+
+                relativePath = Path.Combine("1", "ambiguous[1].txt");
+                fullFilePath = Path.Combine(repo.Info.WorkingDirectory, relativePath);
+                File.WriteAllText(fullFilePath, "Brackets all the way.");
+
+                Assert.Throws<AmbiguousException>(() => repo.Index.RetrieveStatus(relativePath));
             }
         }
     }

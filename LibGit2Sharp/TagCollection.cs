@@ -3,7 +3,6 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using LibGit2Sharp.Core;
-using LibGit2Sharp.Core.Handles;
 
 namespace LibGit2Sharp
 {
@@ -12,7 +11,7 @@ namespace LibGit2Sharp
     /// </summary>
     public class TagCollection : IEnumerable<Tag>
     {
-        private readonly Repository repo;
+        internal readonly Repository repo;
         private const string refsTagsPrefix = "refs/tags/";
 
         /// <summary>
@@ -52,8 +51,8 @@ namespace LibGit2Sharp
         /// <returns>An <see cref = "IEnumerator{T}" /> object that can be used to iterate through the collection.</returns>
         public virtual IEnumerator<Tag> GetEnumerator()
         {
-            return Libgit2UnsafeHelper
-                .ListAllTagNames(repo.Handle)
+            return Proxy
+                .git_tag_list(repo.Handle)
                 .Select(n => this[n])
                 .GetEnumerator();
         }
@@ -73,42 +72,23 @@ namespace LibGit2Sharp
         ///   Creates an annotated tag with the specified name.
         /// </summary>
         /// <param name = "name">The name.</param>
-        /// <param name = "target">The target which can be sha or a canonical reference name.</param>
+        /// <param name = "target">The target <see cref="GitObject"/>.</param>
         /// <param name = "tagger">The tagger.</param>
         /// <param name = "message">The message.</param>
         /// <param name = "allowOverwrite">True to allow silent overwriting a potentially existing tag, false otherwise.</param>
         /// <returns></returns>
-        public virtual Tag Add(string name, string target, Signature tagger, string message, bool allowOverwrite = false)
+        public virtual Tag Add(string name, GitObject target, Signature tagger, string message, bool allowOverwrite = false)
         {
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
-            Ensure.ArgumentNotNullOrEmptyString(target, "target");
+            Ensure.ArgumentNotNull(target, "target");
             Ensure.ArgumentNotNull(tagger, "tagger");
             Ensure.ArgumentNotNull(message, "message");
 
-            GitObject objectToTag = repo.Lookup(target, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound);
+            string prettifiedMessage = Proxy.git_message_prettify(message);
 
-            string prettifiedMessage = ObjectDatabase.PrettifyMessage(message);
-
-            int res;
-            using (var objectPtr = new ObjectSafeWrapper(objectToTag.Id, repo))
-            using (SignatureSafeHandle taggerHandle = tagger.BuildHandle())
-            {
-                GitOid oid;
-                res = NativeMethods.git_tag_create(out oid, repo.Handle, name, objectPtr.ObjectPtr, taggerHandle, prettifiedMessage, allowOverwrite);
-            }
-
-            Ensure.Success(res);
+            Proxy.git_tag_create(repo.Handle, name, target, tagger, prettifiedMessage, allowOverwrite);
 
             return this[name];
-        }
-
-        internal static string PrettifyMessage(string message)
-        {
-            var buffer = new byte[NativeMethods.GIT_PATH_MAX];
-            int res = NativeMethods.git_message_prettify(buffer, buffer.Length, message, false);
-            Ensure.Success(res);
-
-            return Utf8Marshaler.Utf8FromBuffer(buffer) ?? string.Empty;
         }
 
         /// <summary>
@@ -123,31 +103,22 @@ namespace LibGit2Sharp
         [Obsolete("This method will be removed in the next release. Please use Add() instead.")]
         public virtual Tag Create(string name, string target, Signature tagger, string message, bool allowOverwrite = false)
         {
-            return Add(name, target, tagger, message, allowOverwrite);
+            return this.Add(name, target, tagger, message, allowOverwrite);
         }
 
         /// <summary>
         ///   Creates a lightweight tag with the specified name.
         /// </summary>
         /// <param name = "name">The name.</param>
-        /// <param name = "target">The target which can be sha or a canonical reference name.</param>
+        /// <param name = "target">The target <see cref="GitObject"/>.</param>
         /// <param name = "allowOverwrite">True to allow silent overwriting a potentially existing tag, false otherwise.</param>
         /// <returns></returns>
-        public virtual Tag Add(string name, string target, bool allowOverwrite = false)
+        public virtual Tag Add(string name, GitObject target, bool allowOverwrite = false)
         {
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
-            Ensure.ArgumentNotNullOrEmptyString(target, "target");
+            Ensure.ArgumentNotNull(target, "target");
 
-            GitObject objectToTag = repo.Lookup(target, GitObjectType.Any, LookUpOptions.ThrowWhenNoGitObjectHasBeenFound);
-
-            int res;
-            using (var objectPtr = new ObjectSafeWrapper(objectToTag.Id, repo))
-            {
-                GitOid oid;
-                res = NativeMethods.git_tag_create_lightweight(out oid, repo.Handle, name, objectPtr.ObjectPtr, allowOverwrite);
-            }
-
-            Ensure.Success(res);
+            Proxy.git_tag_create_lightweight(repo.Handle, name, target, allowOverwrite);
 
             return this[name];
         }
@@ -162,19 +133,18 @@ namespace LibGit2Sharp
         [Obsolete("This method will be removed in the next release. Please use Add() instead.")]
         public virtual Tag Create(string name, string target, bool allowOverwrite = false)
         {
-            return Add(name, target, allowOverwrite);
+            return this.Add(name, target, allowOverwrite);
         }
 
         /// <summary>
         ///   Deletes the tag with the specified name.
         /// </summary>
-        /// <param name = "name">The short or canonical name of the tag to delete.</param>
-        public virtual void Remove(string name)
+        /// <param name = "tag">The tag to delete.</param>
+        public virtual void Remove(Tag tag)
         {
-            Ensure.ArgumentNotNullOrEmptyString(name, "name");
+            Ensure.ArgumentNotNull(tag, "tag");
 
-            int res = NativeMethods.git_tag_delete(repo.Handle, UnCanonicalizeName(name));
-            Ensure.Success(res);
+            this.Remove(tag.CanonicalName);
         }
 
         /// <summary>
@@ -184,7 +154,7 @@ namespace LibGit2Sharp
         [Obsolete("This method will be removed in the next release. Please use Remove() instead.")]
         public virtual void Delete(string name)
         {
-            Remove(name);
+            this.Remove(name);
         }
 
         private static string NormalizeToCanonicalName(string name)
@@ -199,7 +169,7 @@ namespace LibGit2Sharp
             return string.Concat(refsTagsPrefix, name);
         }
 
-        private static string UnCanonicalizeName(string name)
+        internal string UnCanonicalizeName(string name)
         {
             Ensure.ArgumentNotNullOrEmptyString(name, "name");
 
