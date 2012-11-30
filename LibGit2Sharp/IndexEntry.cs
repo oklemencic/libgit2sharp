@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
 
@@ -7,6 +8,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   A reference to a <see cref = "Blob" /> known by the <see cref = "Index" />.
     /// </summary>
+    [DebuggerDisplayAttribute("{DebuggerDisplay,nq}")]
     public class IndexEntry : IEquatable<IndexEntry>
     {
         private static readonly LambdaEqualityHelper<IndexEntry> equalityHelper =
@@ -18,6 +20,7 @@ namespace LibGit2Sharp
         ///   State of the version of the <see cref = "Blob" /> pointed at by this <see cref = "IndexEntry" />, 
         ///   compared against the <see cref = "Blob" /> known from the <see cref = "Repository.Head" /> and the file in the working directory.
         /// </summary>
+        [Obsolete("This method will be removed in the next release. Please use Repository.Index.RetrieveStatus(filePath) overload instead.")]
         public FileStatus State
         {
             get { return state(); }
@@ -107,6 +110,11 @@ namespace LibGit2Sharp
         public static bool operator !=(IndexEntry left, IndexEntry right)
         {
             return !Equals(left, right);
+        }
+
+        private string DebuggerDisplay
+        {
+            get { return string.Format("{0} => \"{1}\"", Path, Id.ToString(7)); }
         }
     }
 }

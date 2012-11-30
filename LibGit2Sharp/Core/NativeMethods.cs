@@ -3,6 +3,7 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using LibGit2Sharp.Core.Handles;
 
@@ -13,6 +14,21 @@ namespace LibGit2Sharp.Core
     {
         public const uint GIT_PATH_MAX = 4096;
         private const string libgit2 = "git2";
+        private static readonly LibraryLifetimeObject lifetimeObject;
+
+        /// <summary>
+        /// Internal hack to ensure that the call to git_threads_shutdown is called after all handle finalizers 
+        /// have run to completion ensuring that no dangling git-related finalizer runs after git_threads_shutdown. 
+        /// There should never be more than one instance of this object per AppDomain.
+        /// </summary>
+        private sealed class LibraryLifetimeObject : CriticalFinalizerObject
+        {
+            // Ensure mono can JIT the .cctor and adjust the PATH before trying to load the native library. 
+            // See https://github.com/libgit2/libgit2sharp/pull/190
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public LibraryLifetimeObject() { NativeMethods.git_threads_init(); }
+            ~LibraryLifetimeObject() { NativeMethods.git_threads_shutdown(); }
+        }
 
         static NativeMethods()
         {
@@ -29,21 +45,8 @@ namespace LibGit2Sharp.Core
                                                    String.Format(CultureInfo.InvariantCulture, "{0}{1}{2}", path, Path.PathSeparator, Environment.GetEnvironmentVariable(pathEnvVariable)));
             }
 
-            GitInit();
-            AppDomain.CurrentDomain.ProcessExit += ThreadsShutdown;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void GitInit()
-        {
-            // keep this in a separate method so mono can JIT the .cctor
-            // and adjust the PATH before trying to load the native library
-            git_threads_init();
-        }
-
-        private static void ThreadsShutdown(object sender, EventArgs e)
-        {
-            git_threads_shutdown();
+            // See LibraryLifetimeObject description.
+            lifetimeObject = new LibraryLifetimeObject();
         }
 
         public static string ProcessorArchitecture
@@ -147,8 +150,29 @@ namespace LibGit2Sharp.Core
         internal static extern int git_checkout_tree(
             RepositorySafeHandle repo,
             GitObjectSafeHandle treeish,
-            GitCheckoutOpts opts,
-            ref GitIndexerStats stats);
+            GitCheckoutOpts opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_checkout_head(
+            RepositorySafeHandle repo,
+            GitCheckoutOpts opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_clone(
+            out RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string origin_url,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath workdir_path,
+            git_transfer_progress_callback transfer_callback,
+            IntPtr transfer_payload,
+            GitCheckoutOpts checkout_opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_clone_bare(
+            out RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string url,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath destination,
+            git_transfer_progress_callback transfer_callback,
+            IntPtr transfer_payload);
 
         [DllImport(libgit2)]
         internal static extern IntPtr git_commit_author(GitObjectSafeHandle commit);
@@ -345,6 +369,20 @@ namespace LibGit2Sharp.Core
             git_diff_file_fn fileCallback,
             git_diff_hunk_fn hunkCallback,
             git_diff_data_fn lineCallback);
+
+        [DllImport(libgit2)]
+        internal static extern int git_ignore_add_rule(
+            RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (FilePathMarshaler))] string rules);
+
+        [DllImport(libgit2)]
+        internal static extern int git_ignore_clear_internal_rules(RepositorySafeHandle repo);
+
+        [DllImport(libgit2)]
+        internal static extern int git_ignore_path_is_ignored(
+            out int ignored,
+            RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (Utf8Marshaler))] string path);
 
         [DllImport(libgit2)]
         internal static extern int git_index_add_from_workdir(
