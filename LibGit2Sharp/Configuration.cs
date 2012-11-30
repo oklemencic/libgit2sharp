@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Runtime.InteropServices;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
 
@@ -409,14 +410,15 @@ namespace LibGit2Sharp
 
         IEnumerator<ConfigurationEntry> IEnumerable<ConfigurationEntry>.GetEnumerator()
         {
-            var values = new List<ConfigurationEntry>();
-            Proxy.git_config_foreach(LocalHandle, (namePtr, valuePtr, _) => {
-                var name = Utf8Marshaler.FromNative(namePtr);
-                var value = Utf8Marshaler.FromNative(valuePtr);
-                values.Add(new ConfigurationEntry(name, value));
-                return 0;
-            });
-            return values.GetEnumerator();
+            return Proxy.git_config_foreach(LocalHandle, 
+                (entryPtr) =>
+                    {
+                        var entry = (GitConfigEntry)Marshal.PtrToStructure(entryPtr, typeof(GitConfigEntry));
+                        return new ConfigurationEntry(Utf8Marshaler.FromNative(entry.namePtr),
+                                                      Utf8Marshaler.FromNative(entry.valuePtr),
+                                                      (ConfigurationLevel) entry.level);
+                    })
+                .GetEnumerator();
         }
 
         System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator()

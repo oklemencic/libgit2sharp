@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -10,6 +11,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   The collection of <see cref = "Remote" /> in a <see cref = "Repository" />
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class RemoteCollection : IEnumerable<Remote>
     {
         private readonly Repository repository;
@@ -32,14 +34,14 @@ namespace LibGit2Sharp
         /// <returns>The retrived <see cref = "Remote" /> if it has been found, null otherwise.</returns>
         public virtual Remote this[string name]
         {
-            get { return RemoteForName(name); }
+            get { return RemoteForName(name, false); }
         }
 
-        private Remote RemoteForName(string name)
+        internal Remote RemoteForName(string name, bool shouldThrowIfNotFound = true)
         {
-            using (RemoteSafeHandle handle = Proxy.git_remote_load(repository.Handle, name, false))
+            using (RemoteSafeHandle handle = Proxy.git_remote_load(repository.Handle, name, shouldThrowIfNotFound))
             {
-                return handle == null ? null : Remote.BuildFromPtr(handle);
+                return handle == null ? null : Remote.BuildFromPtr(handle, this.repository);
             }
         }
 
@@ -80,7 +82,7 @@ namespace LibGit2Sharp
 
             using (RemoteSafeHandle handle = Proxy.git_remote_add(repository.Handle, name, url))
             {
-                return Remote.BuildFromPtr(handle);
+                return Remote.BuildFromPtr(handle, this.repository);
             }
         }
 
@@ -115,7 +117,7 @@ namespace LibGit2Sharp
             using (RemoteSafeHandle handle = Proxy.git_remote_new(repository.Handle, name, url, fetchRefSpec))
             {
                 Proxy.git_remote_save(handle);
-                return Remote.BuildFromPtr(handle);
+                return Remote.BuildFromPtr(handle, this.repository);
             }
         }
 
@@ -130,6 +132,11 @@ namespace LibGit2Sharp
         public virtual Remote Create(string name, string url, string fetchRefSpec)
         {
             return Add(name, url);
+        }
+
+        private string DebuggerDisplay
+        {
+            get { return string.Format("Count = {0}", this.Count()); }
         }
     }
 }

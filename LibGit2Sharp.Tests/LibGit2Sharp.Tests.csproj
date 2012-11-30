@@ -57,6 +57,7 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="CheckoutFixture.cs" />
     <Compile Include="MetaFixture.cs" />
     <Compile Include="MockedRepositoryFixture.cs" />
     <Compile Include="ConfigurationFixture.cs" />
@@ -67,6 +68,7 @@
     <Compile Include="DiffTreeToTargetFixture.cs" />
     <Compile Include="DiffWorkdirToIndexFixture.cs" />
     <Compile Include="ObjectDatabaseFixture.cs" />
+    <Compile Include="OdbBackendFixture.cs" />
     <Compile Include="DiffTreeToTreeFixture.cs" />
     <Compile Include="RepositoryOptionsFixture.cs" />
     <Compile Include="ResetHeadFixture.cs" />
@@ -87,6 +89,8 @@
     <Compile Include="RepositoryFixture.cs" />
     <Compile Include="TagFixture.cs" />
     <Compile Include="TestHelpers\DirectoryHelper.cs" />
+    <Compile Include="TestHelpers\ExpectedFetchState.cs" />
+    <Compile Include="TestHelpers\TestRemoteInfo.cs" />
     <Compile Include="TestHelpers\IPostTestDirectoryRemover.cs" />
     <Compile Include="TestHelpers\SelfCleaningDirectory.cs" />
     <Compile Include="TestHelpers\SignatureExtensions.cs" />

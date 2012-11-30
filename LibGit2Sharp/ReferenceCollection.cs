@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -10,6 +11,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   The Collection of references in a <see cref = "Repository" />
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class ReferenceCollection : IEnumerable<Reference>
     {
         internal readonly Repository repo;
@@ -236,35 +238,31 @@ namespace LibGit2Sharp
         {
             Ensure.ArgumentNotNullOrEmptyString(pattern, "pattern");
 
-            return new GlobedReferenceEnumerable(repo.Handle, pattern).Select(n => this[n]);
+            return Proxy.git_reference_foreach_glob(repo.Handle, pattern, GitReferenceType.ListAll, Utf8Marshaler.FromNative)
+                .OrderBy(name => name, StringComparer.Ordinal).Select(n => this[n]);
         }
 
-        private class GlobedReferenceEnumerable : IEnumerable<string>
+        /// <summary>
+        ///   Determines if the proposed reference name is well-formed.
+        /// </summary>
+        /// <para>
+        ///   - Top-level names must contain only capital letters and underscores,
+        ///   and must begin and end with a letter. (e.g. "HEAD", "ORIG_HEAD").
+        ///
+        ///   - Names prefixed with "refs/" can be almost anything.  You must avoid
+        ///   the characters '~', '^', ':', '\\', '?', '[', and '*', and the
+        ///   sequences ".." and "@{" which have special meaning to revparse.
+        /// </para>
+        /// <param name="canonicalName">The name to be checked.</param>
+        /// <returns>true is the name is valid; false otherwise.</returns>
+        public virtual bool IsValidName(string canonicalName)
         {
-            private readonly List<string> list = new List<string>();
+            return Proxy.git_reference_is_valid_name(canonicalName);
+        }
 
-            public GlobedReferenceEnumerable(RepositorySafeHandle handle, string pattern)
-            {
-                Proxy.git_reference_foreach_glob(handle, pattern, GitReferenceType.ListAll, Callback);
-                list.Sort(StringComparer.Ordinal);
-            }
-
-            private int Callback(IntPtr branchName, IntPtr payload)
-            {
-                string name = Utf8Marshaler.FromNative(branchName);
-                list.Add(name);
-                return 0;
-            }
-
-            public IEnumerator<string> GetEnumerator()
-            {
-                return list.GetEnumerator();
-            }
-
-            IEnumerator IEnumerable.GetEnumerator()
-            {
-                return GetEnumerator();
-            }
+        private string DebuggerDisplay
+        {
+            get { return string.Format("Count = {0}", this.Count()); }
         }
     }
 }

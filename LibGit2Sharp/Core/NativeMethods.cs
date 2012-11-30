@@ -3,15 +3,32 @@ using System.Globalization;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.ConstrainedExecution;
 using System.Runtime.InteropServices;
 using LibGit2Sharp.Core.Handles;
 
+// ReSharper disable InconsistentNaming
 namespace LibGit2Sharp.Core
 {
     internal static class NativeMethods
     {
         public const uint GIT_PATH_MAX = 4096;
         private const string libgit2 = "git2";
+        private static readonly LibraryLifetimeObject lifetimeObject;
+
+        /// <summary>
+        /// Internal hack to ensure that the call to git_threads_shutdown is called after all handle finalizers 
+        /// have run to completion ensuring that no dangling git-related finalizer runs after git_threads_shutdown. 
+        /// There should never be more than one instance of this object per AppDomain.
+        /// </summary>
+        private sealed class LibraryLifetimeObject : CriticalFinalizerObject
+        {
+            // Ensure mono can JIT the .cctor and adjust the PATH before trying to load the native library. 
+            // See https://github.com/libgit2/libgit2sharp/pull/190
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            public LibraryLifetimeObject() { NativeMethods.git_threads_init(); }
+            ~LibraryLifetimeObject() { NativeMethods.git_threads_shutdown(); }
+        }
 
         static NativeMethods()
         {
@@ -28,21 +45,8 @@ namespace LibGit2Sharp.Core
                                                    String.Format(CultureInfo.InvariantCulture, "{0}{1}{2}", path, Path.PathSeparator, Environment.GetEnvironmentVariable(pathEnvVariable)));
             }
 
-            GitInit();
-            AppDomain.CurrentDomain.ProcessExit += ThreadsShutdown;
-        }
-
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private static void GitInit()
-        {
-            // keep this in a separate method so mono can JIT the .cctor
-            // and adjust the PATH before trying to load the native library
-            git_threads_init();
-        }
-
-        private static void ThreadsShutdown(object sender, EventArgs e)
-        {
-            git_threads_shutdown();
+            // See LibraryLifetimeObject description.
+            lifetimeObject = new LibraryLifetimeObject();
         }
 
         public static string ProcessorArchitecture
@@ -67,6 +71,14 @@ namespace LibGit2Sharp.Core
 
         [DllImport(libgit2)]
         internal static extern GitErrorSafeHandle giterr_last();
+
+        [DllImport(libgit2)]
+        internal static extern void giterr_set_str(
+            GitErrorCategory error_class,
+            string errorString);
+
+        [DllImport(libgit2)]
+        internal static extern void giterr_set_oom();
 
         [DllImport(libgit2)]
         internal static extern int git_blob_create_fromdisk(
@@ -135,6 +147,34 @@ namespace LibGit2Sharp.Core
             ReferenceSafeHandle branch);
 
         [DllImport(libgit2)]
+        internal static extern int git_checkout_tree(
+            RepositorySafeHandle repo,
+            GitObjectSafeHandle treeish,
+            GitCheckoutOpts opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_checkout_head(
+            RepositorySafeHandle repo,
+            GitCheckoutOpts opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_clone(
+            out RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string origin_url,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath workdir_path,
+            git_transfer_progress_callback transfer_callback,
+            IntPtr transfer_payload,
+            GitCheckoutOpts checkout_opts);
+
+        [DllImport(libgit2)]
+        internal static extern int git_clone_bare(
+            out RepositorySafeHandle repo,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string url,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath destination,
+            git_transfer_progress_callback transfer_callback,
+            IntPtr transfer_payload);
+
+        [DllImport(libgit2)]
         internal static extern IntPtr git_commit_author(GitObjectSafeHandle commit);
 
         [DllImport(libgit2)]
@@ -163,6 +203,9 @@ namespace LibGit2Sharp.Core
 
         [DllImport(libgit2)]
         internal static extern int git_commit_parent(out GitObjectSafeHandle parentCommit, GitObjectSafeHandle commit, uint n);
+
+        [DllImport(libgit2)]
+        internal static extern OidSafeHandle git_commit_parent_oid(GitObjectSafeHandle commit, uint n);
 
         [DllImport(libgit2)]
         internal static extern uint git_commit_parentcount(GitObjectSafeHandle commit);
@@ -210,7 +253,8 @@ namespace LibGit2Sharp.Core
         internal static extern int git_config_add_file_ondisk(
             ConfigurationSafeHandle cfg,
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,
-            int priority);
+            uint level,
+            bool force);
 
         [DllImport(libgit2)]
         internal static extern int git_config_new(out ConfigurationSafeHandle cfg);
@@ -245,8 +289,7 @@ namespace LibGit2Sharp.Core
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string value);
 
         internal delegate int config_foreach_callback(
-            IntPtr var_name,
-            IntPtr value,
+            IntPtr entry,
             IntPtr payload);
 
         [DllImport(libgit2)]
@@ -342,13 +385,12 @@ namespace LibGit2Sharp.Core
             [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof (Utf8Marshaler))] string path);
 
         [DllImport(libgit2)]
-        internal static extern int git_index_add(
+        internal static extern int git_index_add_from_workdir(
             IndexSafeHandle index,
-            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,
-            int stage);
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path);
 
         [DllImport(libgit2)]
-        internal static extern int git_index_add2(
+        internal static extern int git_index_add(
             IndexSafeHandle index,
             GitIndexEntry entry);
 
@@ -364,7 +406,13 @@ namespace LibGit2Sharp.Core
         internal static extern void git_index_free(IntPtr index);
 
         [DllImport(libgit2)]
-        internal static extern IndexEntrySafeHandle git_index_get(IndexSafeHandle index, uint n);
+        internal static extern IndexEntrySafeHandle git_index_get_byindex(IndexSafeHandle index, uint n);
+
+        [DllImport(libgit2)]
+        internal static extern IndexEntrySafeHandle git_index_get_bypath(
+            IndexSafeHandle index,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,
+            int stage);
 
         [DllImport(libgit2)]
         internal static extern int git_index_open(
@@ -375,10 +423,16 @@ namespace LibGit2Sharp.Core
         internal static extern int git_index_read_tree(IndexSafeHandle index, GitObjectSafeHandle tree, IntPtr payload);
 
         [DllImport(libgit2)]
-        internal static extern int git_index_remove(IndexSafeHandle index, int n);
+        internal static extern int git_index_remove(
+            IndexSafeHandle index,
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))] FilePath path,
+            int stage);
 
         [DllImport(libgit2)]
         internal static extern int git_index_write(IndexSafeHandle index);
+
+        [DllImport(libgit2)]
+        internal static extern int git_index_write_tree(out GitOid treeOid, IndexSafeHandle index);
 
         [DllImport(libgit2)]
         internal static extern int git_merge_base(
@@ -446,6 +500,12 @@ namespace LibGit2Sharp.Core
             IntPtr payload);
 
         [DllImport(libgit2)]
+        internal static extern int git_odb_add_backend(ObjectDatabaseSafeHandle odb, IntPtr backend, int priority);
+
+        [DllImport(libgit2)]
+        internal static extern IntPtr git_odb_backend_malloc(IntPtr backend, UIntPtr len);
+
+        [DllImport(libgit2)]
         internal static extern int git_odb_exists(ObjectDatabaseSafeHandle odb, ref GitOid id);
 
         [DllImport(libgit2)]
@@ -496,6 +556,10 @@ namespace LibGit2Sharp.Core
 
         [DllImport(libgit2)]
         internal static extern void git_reference_free(IntPtr reference);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reference_is_valid_name(
+            [MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(Utf8Marshaler))] string refname);
 
         [DllImport(libgit2)]
         internal static extern int git_reference_lookup(
@@ -573,6 +637,39 @@ namespace LibGit2Sharp.Core
         internal static extern int git_repository_odb(out ObjectDatabaseSafeHandle odb, RepositorySafeHandle repo);
 
         [DllImport(libgit2)]
+        internal static extern int git_remote_connect(RemoteSafeHandle remote, GitDirection direction);
+
+        [DllImport(libgit2)]
+        internal static extern void git_remote_disconnect(RemoteSafeHandle remote);
+
+        [DllImport(libgit2)]
+        internal static extern int git_remote_download(
+            RemoteSafeHandle remote,
+            git_transfer_progress_callback progress_cb,
+            IntPtr progress_payload);
+
+        [DllImport(libgit2)]
+        internal static extern void git_remote_set_autotag(RemoteSafeHandle remote, TagFetchMode option);
+
+        [DllImport(libgit2)]
+        internal static extern void git_remote_set_callbacks(
+            RemoteSafeHandle remote,
+            ref GitRemoteCallbacks callbacks);
+
+        internal delegate void remote_progress_callback(IntPtr str, int len, IntPtr data);
+
+        internal delegate int remote_completion_callback(RemoteCompletionType type, IntPtr data);
+
+        internal delegate int remote_update_tips_callback(
+            IntPtr refName,
+            ref GitOid oldId,
+            ref GitOid newId,
+            IntPtr data);
+
+        [DllImport(libgit2)]
+        internal static extern int git_remote_update_tips(RemoteSafeHandle remote);
+
+        [DllImport(libgit2)]
         internal static extern int git_repository_discover(
             byte[] repository_path, // NB: This is more properly a StringBuilder, but it's UTF8
             uint size,
@@ -632,6 +729,12 @@ namespace LibGit2Sharp.Core
         [DllImport(libgit2)]
         [return : MarshalAs(UnmanagedType.CustomMarshaler, MarshalTypeRef = typeof(FilePathMarshaler))]
         internal static extern FilePath git_repository_workdir(RepositorySafeHandle repository);
+
+        [DllImport(libgit2)]
+        internal static extern int git_reset(
+            RepositorySafeHandle repo,
+            GitObjectSafeHandle target,
+            ResetOptions reset_type);
 
         [DllImport(libgit2)]
         internal static extern int git_revparse_single(
@@ -725,13 +828,15 @@ namespace LibGit2Sharp.Core
         internal static extern OidSafeHandle git_tag_target_oid(GitObjectSafeHandle tag);
 
         [DllImport(libgit2)]
+        internal static extern GitObjectType git_tag_type(GitObjectSafeHandle tag);
+
+        [DllImport(libgit2)]
         internal static extern void git_threads_init();
 
         [DllImport(libgit2)]
         internal static extern void git_threads_shutdown();
 
-        [DllImport(libgit2)]
-        internal static extern int git_tree_create_fromindex(out GitOid treeOid, IndexSafeHandle index);
+        internal delegate void git_transfer_progress_callback(ref GitTransferProgress stats, IntPtr payload);
 
         [DllImport(libgit2)]
         internal static extern uint git_tree_entry_filemode(SafeHandle entry);
@@ -779,3 +884,4 @@ namespace LibGit2Sharp.Core
         internal static extern void git_treebuilder_free(IntPtr bld);
     }
 }
+// ReSharper restore InconsistentNaming

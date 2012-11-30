@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.Runtime.InteropServices;
@@ -14,6 +15,7 @@ namespace LibGit2Sharp
     ///   The Index is a staging area between the Working directory and the Repository.
     ///   It's used to prepare and aggregate the changes that will be part of the next commit.
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class Index : IEnumerable<IndexEntry>
     {
         private readonly IndexSafeHandle handle;
@@ -65,14 +67,8 @@ namespace LibGit2Sharp
             {
                 Ensure.ArgumentNotNullOrEmptyString(path, "path");
 
-                int? res = Proxy.git_index_find(handle, path);
-
-                if (res == null)
-                {
-                    return null;
-                }
-
-                return this[(uint)res];
+                IndexEntrySafeHandle entryHandle = Proxy.git_index_get_bypath(handle, path, 0);
+                return IndexEntry.BuildFromPtr(repo, entryHandle);
             }
         }
 
@@ -80,12 +76,40 @@ namespace LibGit2Sharp
         {
             get
             {
-                IndexEntrySafeHandle entryHandle = Proxy.git_index_get(handle, index);
+                IndexEntrySafeHandle entryHandle = Proxy.git_index_get_byindex(handle, index);
                 return IndexEntry.BuildFromPtr(repo, entryHandle);
             }
         }
 
         #region IEnumerable<IndexEntry> Members
+
+        private class OrdinalComparer<T> : IComparer<T>
+        {
+            Func<T, string> accessor;
+
+            public OrdinalComparer(Func<T, string> accessor)
+            {
+                this.accessor = accessor;
+            }
+
+            public int Compare(T x, T y)
+            {
+                return string.CompareOrdinal(accessor(x), accessor(y));
+            }
+        }
+
+        private List<IndexEntry> AllIndexEntries()
+        {
+            var list = new List<IndexEntry>();
+
+            for (uint i = 0; i < Count; i++)
+            {
+                list.Add(this[i]);
+            }
+
+            list.Sort(new OrdinalComparer<IndexEntry>(i => i.Path));
+            return list;
+        }
 
         /// <summary>
         ///   Returns an enumerator that iterates through the collection.
@@ -93,10 +117,7 @@ namespace LibGit2Sharp
         /// <returns>An <see cref = "IEnumerator{T}" /> object that can be used to iterate through the collection.</returns>
         public virtual IEnumerator<IndexEntry> GetEnumerator()
         {
-            for (uint i = 0; i < Count; i++)
-            {
-                yield return this[i];
-            }
+            return AllIndexEntries().GetEnumerator();
         }
 
         /// <summary>
@@ -382,19 +403,12 @@ namespace LibGit2Sharp
 
         private void AddToIndex(string relativePath)
         {
-            Proxy.git_index_add(handle, relativePath);
+            Proxy.git_index_add_from_workdir(handle, relativePath);
         }
 
         private void RemoveFromIndex(string relativePath)
         {
-            int? res = Proxy.git_index_find(handle, relativePath);
-
-            if (res == null)
-            {
-                return;
-            }
-
-            Proxy.git_index_remove(handle, res.Value);
+            Proxy.git_index_remove(handle, relativePath, 0);
         }
 
         private void UpdatePhysicalIndex()
@@ -484,8 +498,13 @@ namespace LibGit2Sharp
                 Path = FilePathMarshaler.FromManaged(treeEntryChanges.OldPath),
             };
 
-            Proxy.git_index_add2(handle, indexEntry);
+            Proxy.git_index_add(handle, indexEntry);
             Marshal.FreeHGlobal(indexEntry.Path);
+        }
+
+        private string DebuggerDisplay
+        {
+            get { return string.Format("Count = {0}", Count); }
         }
     }
 }

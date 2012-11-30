@@ -6,11 +6,34 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using LibGit2Sharp.Core.Handles;
+using LibGit2Sharp.Handlers;
 
+// ReSharper disable InconsistentNaming
 namespace LibGit2Sharp.Core
 {
     internal class Proxy
     {
+        #region giterr_
+
+        public static void giterr_set_str(GitErrorCategory error_class, Exception exception)
+        {
+            if (exception is OutOfMemoryException)
+            {
+                NativeMethods.giterr_set_oom();
+            }
+            else
+            {
+                NativeMethods.giterr_set_str(error_class, exception.Message);
+            }
+        }
+
+        public static void giterr_set_str(GitErrorCategory error_class, String errorString)
+        {
+            NativeMethods.giterr_set_str(error_class, errorString);
+        }
+
+        #endregion
+
         #region git_blob_
 
         public static ObjectId git_blob_create_fromchunks(RepositorySafeHandle repo, FilePath hintpath, NativeMethods.source_callback fileCallback)
@@ -104,16 +127,12 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_branch_foreach(
+        public static ICollection<TResult> git_branch_foreach<TResult>(
             RepositorySafeHandle repo,
             GitBranchType branch_type,
-            NativeMethods.branch_foreach_callback callback)
+            Func<IntPtr, GitBranchType, TResult> resultSelector)
         {
-            using (ThreadAffinity())
-            {
-                int res = NativeMethods.git_branch_foreach(repo, branch_type, callback, IntPtr.Zero);
-                Ensure.Success(res);
-            }
+            return git_foreach(resultSelector, c => NativeMethods.git_branch_foreach(repo, branch_type, (x, y, p) => c(x, y, p), IntPtr.Zero));
         }
 
         public static void git_branch_move(ReferenceSafeHandle reference, string new_branch_name, bool force)
@@ -145,11 +164,70 @@ namespace LibGit2Sharp.Core
 
         #endregion
 
+        #region git_checkout_
+
+        public static void git_checkout_tree(
+            RepositorySafeHandle repo,
+            ObjectId treeId,
+            GitCheckoutOpts opts)
+        {
+            using (ThreadAffinity())
+            using (var osw = new ObjectSafeWrapper(treeId, repo))
+            {
+                int res = NativeMethods.git_checkout_tree(repo, osw.ObjectPtr, opts);
+                Ensure.Success(res);
+            }
+        }
+
+        public static void git_checkout_head(RepositorySafeHandle repo, GitCheckoutOpts opts)
+        {
+            using (ThreadAffinity())
+            {
+                int res = NativeMethods.git_checkout_head(repo, opts);
+                Ensure.Success(res);
+            }
+        }
+
+        #endregion
+
+        #region git_clone_
+
+        public static RepositorySafeHandle git_clone(
+            string url,
+            string workdir,
+            NativeMethods.git_transfer_progress_callback transfer_cb,
+            GitCheckoutOpts checkoutOptions)
+        {
+            using (ThreadAffinity())
+            {
+                RepositorySafeHandle repo;
+                int res = NativeMethods.git_clone(out repo, url, workdir, transfer_cb, IntPtr.Zero, checkoutOptions);
+                Ensure.Success(res);
+                return repo;
+            }
+        }
+
+        public static RepositorySafeHandle git_clone_bare(
+            string url,
+            string workdir,
+            NativeMethods.git_transfer_progress_callback transfer_cb)
+        {
+            using (ThreadAffinity())
+            {
+                RepositorySafeHandle repo;
+                int res = NativeMethods.git_clone_bare(out repo, url, workdir, transfer_cb, IntPtr.Zero);
+                Ensure.Success(res);
+                return repo;
+            }
+        }
+
+        #endregion
+
         #region git_commit_
 
         public static Signature git_commit_author(GitObjectSafeHandle obj)
         {
-            return new Signature(NativeMethods.git_commit_committer(obj));
+            return new Signature(NativeMethods.git_commit_author(obj));
         }
 
         public static Signature git_commit_committer(GitObjectSafeHandle obj)
@@ -206,6 +284,11 @@ namespace LibGit2Sharp.Core
             }
         }
 
+        public static ObjectId git_commit_parent_oid(GitObjectSafeHandle obj, uint i)
+        {
+            return NativeMethods.git_commit_parent_oid(obj, i).MarshalAsObjectId();
+        }
+
         public static int git_commit_parentcount(RepositorySafeHandle repo, ObjectId id)
         {
             using (var obj = new ObjectSafeWrapper(id, repo))
@@ -228,11 +311,11 @@ namespace LibGit2Sharp.Core
 
         #region git_config_
 
-        public static void git_config_add_file_ondisk(ConfigurationSafeHandle config, FilePath path, int priority)
+        public static void git_config_add_file_ondisk(ConfigurationSafeHandle config, FilePath path, uint level)
         {
             using (ThreadAffinity())
             {
-                int res = NativeMethods.git_config_add_file_ondisk(config, path, priority);
+                int res = NativeMethods.git_config_add_file_ondisk(config, path, level, true);
                 Ensure.Success(res);
             }
         }
@@ -392,15 +475,11 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_config_foreach(
+        public static ICollection<TResult> git_config_foreach<TResult>(
             ConfigurationSafeHandle config,
-            NativeMethods.config_foreach_callback callback)
+            Func<IntPtr, TResult> resultSelector)
         {
-            using (ThreadAffinity())
-            {
-                int res = NativeMethods.git_config_foreach(config, callback, IntPtr.Zero);
-                Ensure.Success(res);
-            }
+            return git_foreach(resultSelector, c => NativeMethods.git_config_foreach(config, (e, p) => c(e, p), IntPtr.Zero));
         }
 
         #endregion
@@ -409,16 +488,16 @@ namespace LibGit2Sharp.Core
 
         public static void git_diff_blobs(
             RepositorySafeHandle repo,
-            Blob oldBlob,
-            Blob newBlob,
+            ObjectId oldBlob,
+            ObjectId newBlob,
             GitDiffOptions options,
             NativeMethods.git_diff_file_fn fileCallback,
             NativeMethods.git_diff_hunk_fn hunkCallback,
             NativeMethods.git_diff_data_fn lineCallback)
         {
             using (ThreadAffinity())
-            using (var osw1 = new ObjectSafeWrapper(oldBlob.Id, repo))
-            using (var osw2 = new ObjectSafeWrapper(newBlob.Id, repo))
+            using (var osw1 = new ObjectSafeWrapper(oldBlob, repo, true))
+            using (var osw2 = new ObjectSafeWrapper(newBlob, repo, true))
             {
                 int res = NativeMethods.git_diff_blobs(osw1.ObjectPtr, osw2.ObjectPtr, options, IntPtr.Zero, fileCallback, hunkCallback, lineCallback);
                 Ensure.Success(res);
@@ -471,8 +550,8 @@ namespace LibGit2Sharp.Core
             ObjectId newTree)
         {
             using (ThreadAffinity())
-            using (var osw1 = new ObjectSafeWrapper(oldTree, repo))
-            using (var osw2 = new ObjectSafeWrapper(newTree, repo))
+            using (var osw1 = new ObjectSafeWrapper(oldTree, repo, true))
+            using (var osw2 = new ObjectSafeWrapper(newTree, repo, true))
             {
                 DiffListSafeHandle diff;
                 int res = NativeMethods.git_diff_tree_to_tree(repo, options, osw1.ObjectPtr, osw2.ObjectPtr, out diff);
@@ -516,20 +595,20 @@ namespace LibGit2Sharp.Core
 
         #region git_index_
 
-        public static void git_index_add(IndexSafeHandle index, FilePath path)
+        public static void git_index_add(IndexSafeHandle index, GitIndexEntry entry)
         {
             using (ThreadAffinity())
             {
-                int res = NativeMethods.git_index_add(index, path, 0);
+                int res = NativeMethods.git_index_add(index, entry);
                 Ensure.Success(res);
             }
         }
 
-        public static void git_index_add2(IndexSafeHandle index, GitIndexEntry entry)
+        public static void git_index_add_from_workdir(IndexSafeHandle index, FilePath path)
         {
             using (ThreadAffinity())
             {
-                int res = NativeMethods.git_index_add2(index, entry);
+                int res = NativeMethods.git_index_add_from_workdir(index, path);
                 Ensure.Success(res);
             }
         }
@@ -558,9 +637,16 @@ namespace LibGit2Sharp.Core
             NativeMethods.git_index_free(index);
         }
 
-        public static IndexEntrySafeHandle git_index_get(IndexSafeHandle index, uint n)
+        public static IndexEntrySafeHandle git_index_get_byindex(IndexSafeHandle index, uint n)
         {
-            return NativeMethods.git_index_get(index, n);
+            return NativeMethods.git_index_get_byindex(index, n);
+        }
+
+        public static IndexEntrySafeHandle git_index_get_bypath(IndexSafeHandle index, FilePath path, int stage)
+        {
+            IndexEntrySafeHandle handle = NativeMethods.git_index_get_bypath(index, path, stage);
+
+            return handle.IsZero ? null : handle;
         }
 
         public static IndexSafeHandle git_index_open(FilePath indexpath)
@@ -585,11 +671,11 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_index_remove(IndexSafeHandle index, int n)
+        public static void git_index_remove(IndexSafeHandle index, FilePath path, int stage)
         {
             using (ThreadAffinity())
             {
-                int res = NativeMethods.git_index_remove(index, n);
+                int res = NativeMethods.git_index_remove(index, path, stage);
                 Ensure.Success(res);
             }
         }
@@ -600,6 +686,18 @@ namespace LibGit2Sharp.Core
             {
                 int res = NativeMethods.git_index_write(index);
                 Ensure.Success(res);
+            }
+        }
+
+        public static GitOid git_tree_create_fromindex(Index index)
+        {
+            using (ThreadAffinity())
+            {
+                GitOid treeOid;
+                int res = NativeMethods.git_index_write_tree(out treeOid, index.Handle);
+                Ensure.Success(res);
+
+                return treeOid;
             }
         }
 
@@ -685,13 +783,9 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_note_foreach(RepositorySafeHandle repo, string notes_ref, NativeMethods.notes_foreach_callback callback)
+        public static ICollection<TResult> git_note_foreach<TResult>(RepositorySafeHandle repo, string notes_ref, Func<GitNoteData, TResult> resultSelector)
         {
-            using (ThreadAffinity())
-            {
-                int res = NativeMethods.git_note_foreach(repo, notes_ref, callback, IntPtr.Zero);
-                Ensure.Success(res);
-            }
+            return git_foreach(resultSelector, c => NativeMethods.git_note_foreach(repo, notes_ref, (x, p) => c(x, p), IntPtr.Zero));
         }
 
         public static void git_note_free(IntPtr note)
@@ -793,6 +887,26 @@ namespace LibGit2Sharp.Core
 
         #region git_odb_
 
+        public static void git_odb_add_backend(ObjectDatabaseSafeHandle odb, IntPtr backend, int priority)
+        {
+            Ensure.Success(NativeMethods.git_odb_add_backend(odb, backend, priority));
+        }
+
+        public static IntPtr git_odb_backend_malloc(IntPtr backend, UIntPtr len)
+        {
+            IntPtr toReturn = NativeMethods.git_odb_backend_malloc(backend, len);
+
+            if (IntPtr.Zero == toReturn)
+            {
+                throw new LibGit2SharpException(String.Format(CultureInfo.InvariantCulture,
+                                                              "Unable to allocate {0} bytes; out of memory",
+                                                              len.ToString()),
+                                                GitErrorCode.Error, GitErrorCategory.NoMemory);
+            }
+
+            return toReturn;
+        }
+
         public static bool git_odb_exists(ObjectDatabaseSafeHandle odb, ObjectId id)
         {
             GitOid oid = id.Oid;
@@ -845,22 +959,23 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_reference_foreach_glob(
+        public static ICollection<TResult> git_reference_foreach_glob<TResult>(
             RepositorySafeHandle repo,
             string glob,
             GitReferenceType flags,
-            NativeMethods.ref_glob_callback callback)
+            Func<IntPtr, TResult> resultSelector)
         {
-            using (ThreadAffinity())
-            {
-                int res = NativeMethods.git_reference_foreach_glob(repo, glob, flags, callback, IntPtr.Zero);
-                Ensure.Success(res);
-            }
+            return git_foreach(resultSelector, c => NativeMethods.git_reference_foreach_glob(repo, glob, flags, (x, p) => c(x, p), IntPtr.Zero));
         }
 
         public static void git_reference_free(IntPtr reference)
         {
             NativeMethods.git_reference_free(reference);
+        }
+
+        public static bool git_reference_is_valid_name(string refname)
+        {
+            return NativeMethods.git_reference_is_valid_name(refname) != 0;
         }
 
         public static IList<string> git_reference_list(RepositorySafeHandle repo, GitReferenceType flags)
@@ -975,6 +1090,34 @@ namespace LibGit2Sharp.Core
             }
         }
 
+        public static void git_remote_connect(RemoteSafeHandle remote, GitDirection direction)
+        {
+            using (ThreadAffinity())
+            {
+                int res = NativeMethods.git_remote_connect(remote, direction);
+                Ensure.Success(res);
+            }
+        }
+
+        public static void git_remote_disconnect(RemoteSafeHandle remote)
+        {
+            using (ThreadAffinity())
+            {
+                NativeMethods.git_remote_disconnect(remote);
+            }
+        }
+
+        public static void git_remote_download(RemoteSafeHandle remote, TransferProgressHandler onTransferProgress)
+        {
+            using (ThreadAffinity())
+            {
+                NativeMethods.git_transfer_progress_callback cb = TransferCallbacks.GenerateCallback(onTransferProgress);
+
+                int res = NativeMethods.git_remote_download(remote, cb, IntPtr.Zero);
+                Ensure.Success(res);
+            }
+        }
+
         public static void git_remote_free(IntPtr remote)
         {
             NativeMethods.git_remote_free(remote);
@@ -1031,6 +1174,31 @@ namespace LibGit2Sharp.Core
             using (ThreadAffinity())
             {
                 int res = NativeMethods.git_remote_save(remote);
+                Ensure.Success(res);
+            }
+        }
+
+        public static void git_remote_set_autotag(RemoteSafeHandle remote, TagFetchMode value)
+        {
+            using (ThreadAffinity())
+            {
+                NativeMethods.git_remote_set_autotag(remote, value);
+            }
+        }
+
+        public static void git_remote_set_callbacks(RemoteSafeHandle remote, ref GitRemoteCallbacks callbacks)
+        {
+            using (ThreadAffinity())
+            {
+                NativeMethods.git_remote_set_callbacks(remote, ref callbacks);
+            }
+        }
+
+        public static void git_remote_update_tips(RemoteSafeHandle remote)
+        {
+            using (ThreadAffinity())
+            {
+                int res = NativeMethods.git_remote_update_tips(remote);
                 Ensure.Success(res);
             }
         }
@@ -1159,6 +1327,23 @@ namespace LibGit2Sharp.Core
 
         #endregion
 
+        #region git_reset_
+
+        public static void git_reset(
+            RepositorySafeHandle repo,
+            ObjectId commitishId,
+            ResetOptions resetKind)
+        {
+            using (ThreadAffinity())
+            using (var osw = new ObjectSafeWrapper(commitishId, repo))
+            {
+                int res = NativeMethods.git_reset(repo, osw.ObjectPtr, resetKind);
+                Ensure.Success(res);
+            }
+        }
+
+        #endregion
+
         #region git_revparse_
 
         public static GitObjectSafeHandle git_revparse_single(RepositorySafeHandle repo, string objectish)
@@ -1223,7 +1408,7 @@ namespace LibGit2Sharp.Core
                 GitOid ret;
                 int res = NativeMethods.git_revwalk_next(out ret, walker);
 
-                if (res == (int)GitErrorCode.RevWalkOver)
+                if (res == (int)GitErrorCode.IterOver)
                 {
                     return null;
                 }
@@ -1304,13 +1489,9 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        public static void git_status_foreach(RepositorySafeHandle repo, NativeMethods.status_callback callback)
+        public static ICollection<TResult> git_status_foreach<TResult>(RepositorySafeHandle repo, Func<IntPtr, uint, TResult> resultSelector)
         {
-            using (ThreadAffinity())
-            {
-                int res = NativeMethods.git_status_foreach(repo, callback, IntPtr.Zero);
-                Ensure.Success(res);
-            }
+            return git_foreach(resultSelector, c => NativeMethods.git_status_foreach(repo, (x, y, p) => c(x, y, p), IntPtr.Zero));
         }
 
         #endregion
@@ -1391,23 +1572,14 @@ namespace LibGit2Sharp.Core
             return NativeMethods.git_tag_target_oid(tag).MarshalAsObjectId();
         }
 
-
+        public static GitObjectType git_tag_type(GitObjectSafeHandle tag)
+        {
+            return NativeMethods.git_tag_type(tag);
+        }
 
         #endregion
 
         #region git_tree_
-
-        public static GitOid git_tree_create_fromindex(Index index)
-        {
-            using (ThreadAffinity())
-            {
-                GitOid treeOid;
-                int res = NativeMethods.git_tree_create_fromindex(out treeOid, index.Handle);
-                Ensure.Success(res);
-
-                return treeOid;
-            }
-        }
 
         public static Mode git_tree_entry_attributes(SafeHandle entry)
         {
@@ -1508,6 +1680,36 @@ namespace LibGit2Sharp.Core
 
         #endregion
 
+        private static ICollection<TResult> git_foreach<T, TResult>(Func<T, TResult> resultSelector, Func<Func<T, IntPtr, int>, int> iterator)
+        {
+            using (ThreadAffinity())
+            {
+                var result = new List<TResult>();
+                var res = iterator((x, payload) =>
+                                       {
+                                           result.Add(resultSelector(x));
+                                           return 0;
+                                       });
+                Ensure.Success(res);
+                return result;
+            }
+        }
+
+        private static ICollection<TResult> git_foreach<T1, T2, TResult>(Func<T1, T2, TResult> resultSelector, Func<Func<T1, T2, IntPtr, int>, int> iterator)
+        {
+            using (ThreadAffinity())
+            {
+                var result = new List<TResult>();
+                var res = iterator((x, y, payload) =>
+                                       {
+                                           result.Add(resultSelector(x, y));
+                                           return 0;
+                                       });
+                Ensure.Success(res);
+                return result;
+            }
+        }
+
         private static unsafe class Libgit2UnsafeHelper
         {
             public static IList<string> BuildListOf(UnSafeNativeMethods.git_strarray strArray)
@@ -1566,7 +1768,19 @@ namespace LibGit2Sharp.Core
             }
         }
 
-        private static IDisposable ThreadAffinity()
+        private static Func<IDisposable> ThreadAffinity = WithoutThreadAffinity;
+
+        internal static void EnableThreadAffinity()
+        {
+            ThreadAffinity = WithThreadAffinity;
+        }
+
+        private static IDisposable WithoutThreadAffinity()
+        {
+            return null;
+        }
+
+        private static IDisposable WithThreadAffinity()
         {
             return new DisposableThreadAffinityWrapper();
         }
@@ -1585,3 +1799,4 @@ namespace LibGit2Sharp.Core
         }
     }
 }
+// ReSharper restore InconsistentNaming

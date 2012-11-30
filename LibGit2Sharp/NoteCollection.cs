@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
@@ -11,6 +12,7 @@ namespace LibGit2Sharp
     /// <summary>
     ///   A collection of <see cref = "Note"/> exposed in the <see cref = "Repository"/>.
     /// </summary>
+    [DebuggerDisplay("{DebuggerDisplay,nq}")]
     public class NoteCollection : IEnumerable<Note>
     {
         private readonly Repository repo;
@@ -109,9 +111,8 @@ namespace LibGit2Sharp
                 Ensure.ArgumentNotNull(@namespace, "@namespace");
 
                 string canonicalNamespace = NormalizeToCanonicalName(@namespace);
-                var notesOidRetriever = new NotesOidRetriever(repo, canonicalNamespace);
 
-                return notesOidRetriever.Retrieve().Select(oid => RetrieveNote(new ObjectId(oid), canonicalNamespace));
+                return Proxy.git_note_foreach(repo.Handle, canonicalNamespace, n => RetrieveNote(new ObjectId(n.TargetOid), canonicalNamespace));
             }
         }
 
@@ -228,26 +229,9 @@ namespace LibGit2Sharp
             Remove(targetId, author, committer, @namespace);
         }
 
-        private class NotesOidRetriever
+        private string DebuggerDisplay
         {
-            private readonly List<GitOid> notesOid = new List<GitOid>();
-
-            internal NotesOidRetriever(Repository repo, string canonicalNamespace)
-            {
-                Proxy.git_note_foreach(repo.Handle, canonicalNamespace, NoteListCallBack);
-            }
-
-            private int NoteListCallBack(GitNoteData noteData, IntPtr intPtr)
-            {
-                notesOid.Add(noteData.TargetOid);
-
-                return 0;
-            }
-
-            public IEnumerable<GitOid> Retrieve()
-            {
-                return notesOid;
-            }
+            get { return string.Format("Count = {0}", this.Count()); }
         }
     }
 }

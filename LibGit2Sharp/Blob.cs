@@ -1,6 +1,5 @@
 ﻿using System.IO;
 using LibGit2Sharp.Core;
-using LibGit2Sharp.Core.Handles;
 
 namespace LibGit2Sharp
 {
@@ -9,7 +8,7 @@ namespace LibGit2Sharp
     /// </summary>
     public class Blob : GitObject
     {
-        private readonly Repository repo;
+        private readonly ILazy<int> lazySize;
 
         /// <summary>
         ///   Needed for mocking purposes.
@@ -18,15 +17,15 @@ namespace LibGit2Sharp
         { }
 
         internal Blob(Repository repo, ObjectId id)
-            : base(id)
+            : base(repo, id)
         {
-            this.repo = repo;
+            lazySize = GitObjectLazyGroup.Singleton(repo, id, Proxy.git_blob_rawsize);
         }
 
         /// <summary>
         ///   Gets the size in bytes of the contents of a blob
         /// </summary>
-        public virtual int Size { get; set; }
+        public virtual int Size { get { return lazySize.Value; } }
 
         /// <summary>
         ///   Gets the blob content in a <see cref="byte" /> array.
@@ -48,15 +47,6 @@ namespace LibGit2Sharp
             {
                 return Proxy.git_blob_rawcontent_stream(repo.Handle, Id, Size);
             }
-        }
-
-        internal static Blob BuildFromPtr(GitObjectSafeHandle obj, ObjectId id, Repository repo)
-        {
-            var blob = new Blob(repo, id)
-                           {
-                               Size = Proxy.git_blob_rawsize(obj)
-                           };
-            return blob;
         }
     }
 }

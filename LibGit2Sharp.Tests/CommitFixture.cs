@@ -25,15 +25,18 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanCorrectlyCountCommitsWhenSwitchingToAnotherBranch()
         {
-            using (var repo = new Repository(BareTestRepoPath))
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.RepositoryPath))
             {
+                repo.Reset(ResetOptions.Hard);
+
                 repo.Checkout("test");
                 Assert.Equal(2, repo.Commits.Count());
                 Assert.Equal("e90810b8df3e80c413d903f631643c716887138d", repo.Commits.First().Id.Sha);
 
                 repo.Checkout("master");
-                Assert.Equal(7, repo.Commits.Count());
-                Assert.Equal("4c062a6361ae6959e06292c1fa5e2822d9c96345", repo.Commits.First().Id.Sha);
+                Assert.Equal(9, repo.Commits.Count());
+                Assert.Equal("32eab9cb1f450b5fe7ab663462b77d7f4b703344", repo.Commits.First().Id.Sha);
             }
         }
 
@@ -168,7 +171,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Equal(1, repo.Commits.First().ParentsCount);
+                Assert.Equal(1, repo.Commits.First().Parents.Count());
             }
         }
 
@@ -221,9 +224,11 @@ namespace LibGit2Sharp.Tests
         [Fact]
         public void CanEnumerateFromDetachedHead()
         {
-            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo();
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
             using (var repoClone = new Repository(path.RepositoryPath))
             {
+                repoClone.Reset(ResetOptions.Hard);
+
                 string headSha = repoClone.Head.Tip.Sha;
                 repoClone.Checkout(headSha);
 
@@ -231,7 +236,8 @@ namespace LibGit2Sharp.Tests
                     repo => new Filter { Since = repo.Head },
                     new[]
                         {
-                            "4c062a6", "be3563a", "c47800c", "9fd738e",
+                            "32eab9c", "592d3c8", "4c062a6",
+                            "be3563a", "c47800c", "9fd738e",
                             "4a202b3", "5b5b025", "8496071",
                         });
             }
@@ -411,7 +417,7 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal("181037049a54a1eb5fab404658a3a250b44335d7", commit.Tree.Sha);
 
-                Assert.Equal(0, commit.ParentsCount);
+                Assert.Equal(0, commit.Parents.Count());
             }
         }
 
@@ -422,7 +428,6 @@ namespace LibGit2Sharp.Tests
             {
                 var commit = repo.Lookup<Commit>("a4a7dce85cf63874e984719f4fdd239f5145052f");
                 Assert.Equal(2, commit.Parents.Count());
-                Assert.Equal(2, commit.ParentsCount);
             }
         }
 
@@ -527,7 +532,7 @@ namespace LibGit2Sharp.Tests
                 AssertBlobContent(repo.Head[relativeFilepath], "nulltoken\n");
                 AssertBlobContent(commit[relativeFilepath], "nulltoken\n");
 
-                Assert.Equal(0, commit.ParentsCount);
+                Assert.Equal(0, commit.Parents.Count());
                 Assert.False(repo.Info.IsEmpty);
 
                 File.WriteAllText(filePath, "nulltoken commits!\n");
@@ -539,7 +544,7 @@ namespace LibGit2Sharp.Tests
                 AssertBlobContent(repo.Head[relativeFilepath], "nulltoken commits!\n");
                 AssertBlobContent(commit2[relativeFilepath], "nulltoken commits!\n");
 
-                Assert.Equal(1, commit2.ParentsCount);
+                Assert.Equal(1, commit2.Parents.Count());
                 Assert.Equal(commit.Id, commit2.Parents.First().Id);
 
                 Branch firstCommitBranch = repo.CreateBranch("davidfowl-rules", commit);
@@ -555,7 +560,7 @@ namespace LibGit2Sharp.Tests
                 AssertBlobContent(repo.Head[relativeFilepath], "davidfowl commits!\n");
                 AssertBlobContent(commit3[relativeFilepath], "davidfowl commits!\n");
 
-                Assert.Equal(1, commit3.ParentsCount);
+                Assert.Equal(1, commit3.Parents.Count());
                 Assert.Equal(commit.Id, commit3.Parents.First().Id);
 
                 AssertBlobContent(firstCommitBranch[relativeFilepath], "nulltoken\n");
@@ -614,7 +619,7 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(1, repo.Head.Commits.Count());
 
                 Commit originalCommit = repo.Head.Tip;
-                Assert.Equal(0, originalCommit.ParentsCount);
+                Assert.Equal(0, originalCommit.Parents.Count());
 
                 CreateAndStageANewFile(repo);
 
@@ -634,7 +639,7 @@ namespace LibGit2Sharp.Tests
             {
                 var mergedCommit = repo.Lookup<Commit>("be3563a");
                 Assert.NotNull(mergedCommit);
-                Assert.Equal(2, mergedCommit.ParentsCount);
+                Assert.Equal(2, mergedCommit.Parents.Count());
 
                 repo.Reset(ResetOptions.Soft, mergedCommit.Sha);
 
@@ -704,6 +709,24 @@ namespace LibGit2Sharp.Tests
                                                 "4a202b346bb0fb0db7eff3cffeb3c70babbd2045" };
 
                 Assert.Equal(expectedChildren, children.Select(c => c.Id.Sha));
+            }
+        }
+
+        [Fact]
+        public void CanCorrectlyDistinguishAuthorFromCommitter()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoPath);
+            using (var repo = new Repository(path.RepositoryPath))
+            {
+                var author = new Signature("Wilbert van Dolleweerd", "getit@xs4all.nl",
+                                           Epoch.ToDateTimeOffset(1244187936, 120));
+                var committer = new Signature("Henk Westhuis", "Henk_Westhuis@hotmail.com",
+                                           Epoch.ToDateTimeOffset(1244286496, 120));
+
+                Commit c = repo.Commit("I can haz an author and a committer!", author, committer);
+
+                Assert.Equal(author, c.Author);
+                Assert.Equal(committer, c.Committer);
             }
         }
     }

@@ -1,14 +1,17 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using LibGit2Sharp.Tests.TestHelpers;
 using Xunit;
+using Xunit.Extensions;
 
 namespace LibGit2Sharp.Tests
 {
     public class RepositoryFixture : BaseFixture
     {
         private const string commitSha = "8496071c1b46c854b31185ea97743be6a8774479";
+        private const string TestRepoUrl = "git://github.com/libgit2/TestGitRepository";
 
         [Fact]
         public void CanCreateBareRepo()
@@ -34,7 +37,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Throws<LibGit2SharpException>(() => repo.Index);
+                Assert.Throws<BareRepositoryException>(() => repo.Index);
             }
         }
 
@@ -74,6 +77,57 @@ namespace LibGit2Sharp.Tests
             FileAttributes attribs = File.GetAttributes(repoPath);
 
             Assert.Equal(FileAttributes.Hidden, (attribs & FileAttributes.Hidden));
+        }
+
+        [Fact]
+        public void CanFetchFromRemoteByName()
+        {
+            string remoteName = "testRemote";
+            string url = "http://github.com/libgit2/TestGitRepository";
+
+            var scd = BuildSelfCleaningDirectory();
+            using (var repo = Repository.Init(scd.RootedDirectoryPath))
+            {
+                Remote remote = repo.Remotes.Add(remoteName, url);
+
+                // We will first fetch without specifying any Tag options.
+                // After we verify this fetch, we will perform a second fetch
+                // where we will download all tags, and verify that the
+                // nearly-dangling tag is now present.
+
+                // Set up structures for the expected results
+                // and verifying the RemoteUpdateTips callback.
+                TestRemoteInfo remoteInfo = TestRemoteInfo.TestRemoteInstance;
+                ExpectedFetchState expectedFetchState = new ExpectedFetchState(remoteName);
+
+                // Add expected branch objects
+                foreach (KeyValuePair<string, ObjectId> kvp in remoteInfo.BranchTips)
+                {
+                    expectedFetchState.AddExpectedBranch(kvp.Key, ObjectId.Zero, kvp.Value);
+                }
+
+                // Add the expected tags
+                string[] expectedTagNames = { "blob", "commit_tree", "annotated_tag" };
+                foreach (string tagName in expectedTagNames)
+                {
+                    TestRemoteInfo.ExpectedTagInfo expectedTagInfo = remoteInfo.Tags[tagName];
+                    expectedFetchState.AddExpectedTag(tagName, ObjectId.Zero, expectedTagInfo);
+                }
+
+                // Perform the actual fetch
+                repo.Fetch(remote.Name, onUpdateTips: expectedFetchState.RemoteUpdateTipsHandler);
+
+                // Verify the expected state
+                expectedFetchState.CheckUpdatedReferences(repo);
+
+                // Now fetch the rest of the tags
+                repo.Fetch(remote.Name, tagFetchMode: TagFetchMode.All);
+
+                // Verify that the "nearly-dangling" tag is now in the repo.
+                Tag nearlyDanglingTag = repo.Tags["nearly-dangling"];
+                Assert.NotNull(nearlyDanglingTag);
+                Assert.Equal(remoteInfo.Tags["nearly-dangling"].TargetId, nearlyDanglingTag.Target.Id);
+            }
         }
 
         [Fact]
@@ -411,6 +465,76 @@ namespace LibGit2Sharp.Tests
 
                 repo.Refs.Add("HEAD", branchName, true);
                 Assert.False(repo.Info.IsHeadOrphaned);
+            }
+        }
+
+        [Theory]
+        [InlineData("http://github.com/libgit2/TestGitRepository")]
+        [InlineData("https://github.com/libgit2/TestGitRepository")]
+        [InlineData("git://github.com/libgit2/TestGitRepository")]
+        //[InlineData("git@github.com:libgit2/TestGitRepository")]
+        public void CanClone(string url)
+        {
+            var scd = BuildSelfCleaningDirectory();
+            using (Repository repo = Repository.Clone(url, scd.RootedDirectoryPath))
+            {
+                string dir = repo.Info.Path;
+                Assert.True(Path.IsPathRooted(dir));
+                Assert.True(Directory.Exists(dir));
+
+                Assert.NotNull(repo.Info.WorkingDirectory);
+                Assert.Equal(Path.Combine(scd.RootedDirectoryPath, ".git" + Path.DirectorySeparatorChar), repo.Info.Path);
+                Assert.False(repo.Info.IsBare);
+
+                Assert.True(File.Exists(Path.Combine(scd.RootedDirectoryPath, "master.txt")));
+                Assert.Equal(repo.Head.Name, "master");
+                Assert.Equal(repo.Head.Tip.Id.ToString(), "49322bb17d3acc9146f98c97d078513228bbf3c0");
+            }
+        }
+
+        [Theory]
+        [InlineData("http://github.com/libgit2/TestGitRepository")]
+        [InlineData("https://github.com/libgit2/TestGitRepository")]
+        [InlineData("git://github.com/libgit2/TestGitRepository")]
+        //[InlineData("git@github.com:libgit2/TestGitRepository")]
+        public void CanCloneBarely(string url)
+        {
+            var scd = BuildSelfCleaningDirectory();
+            using (Repository repo = Repository.Clone(url, scd.RootedDirectoryPath, bare:true))
+            {
+                string dir = repo.Info.Path;
+                Assert.True(Path.IsPathRooted(dir));
+                Assert.True(Directory.Exists(dir));
+
+                Assert.Null(repo.Info.WorkingDirectory);
+                Assert.Equal(scd.RootedDirectoryPath + Path.DirectorySeparatorChar, repo.Info.Path);
+                Assert.True(repo.Info.IsBare);
+            }
+        }
+
+        [Fact]
+        public void WontCheckoutIfAskedNotTo()
+        {
+            var scd = BuildSelfCleaningDirectory();
+            using (Repository repo = Repository.Clone(TestRepoUrl, scd.RootedDirectoryPath, checkout:false))
+            {
+                Assert.False(File.Exists(Path.Combine(scd.RootedDirectoryPath, "master.txt")));
+            }
+        }
+
+        [Fact]
+        public void CallsProgressCallbacks()
+        {
+            bool transferWasCalled = false;
+            bool checkoutWasCalled = false;
+
+            var scd = BuildSelfCleaningDirectory();
+            using (Repository repo = Repository.Clone(TestRepoUrl, scd.RootedDirectoryPath, 
+                onTransferProgress: (_) => transferWasCalled = true,
+                onCheckoutProgress: (a,b,c) => checkoutWasCalled = true))
+            {
+                Assert.True(transferWasCalled);
+                Assert.True(checkoutWasCalled);
             }
         }
     }

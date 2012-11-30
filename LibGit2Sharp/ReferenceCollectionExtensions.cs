@@ -19,25 +19,15 @@ namespace LibGit2Sharp
 
         private static RefState TryResolveReference(out Reference reference, ReferenceCollection refsColl, string canonicalName)
         {
-            try
-            {
-                //TODO: Maybe would it be better to rather rely on git_reference_normalize_name()
-                //This would be much more straightforward and less subject to fail for the wrong reason.
-
-                reference = refsColl[canonicalName];
-
-                if (reference != null)
-                {
-                    return RefState.Exists;
-                }
-
-                return RefState.DoesNotExistButLooksValid;
-            }
-            catch (LibGit2SharpException)
+            if (!refsColl.IsValidName(canonicalName))
             {
                 reference = null;
                 return RefState.DoesNotLookValid;
             }
+
+            reference = refsColl[canonicalName];
+
+            return reference != null ? RefState.Exists : RefState.DoesNotExistButLooksValid;
         }
 
         /// <summary>
@@ -138,11 +128,13 @@ namespace LibGit2Sharp
             var symbolicReference = reference as SymbolicReference;
             if (symbolicReference != null)
             {
-                Reference targetRef = refsColl[canonicalRefNameOrObjectish];
+                Reference targetRef;
 
-                if (targetRef == null)
+                RefState refState = TryResolveReference(out targetRef, refsColl, canonicalRefNameOrObjectish);
+
+                if (refState == RefState.DoesNotLookValid)
                 {
-                    throw new ArgumentException(String.Format(CultureInfo.InvariantCulture, "The reference specified by {0} is a Symbolic reference, you must provide a reference canonical name as the target.", name), "target");
+                    throw new ArgumentException(String.Format(CultureInfo.InvariantCulture, "The reference specified by {0} is a Symbolic reference, you must provide a reference canonical name as the target.", name), "canonicalRefNameOrObjectish");
                 }
 
                 return refsColl.UpdateTarget(symbolicReference, targetRef);
