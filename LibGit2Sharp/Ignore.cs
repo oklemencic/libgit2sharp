@@ -26,9 +26,16 @@ namespace LibGit2Sharp
         ///   to the standard .gitignore rules that would apply as a result of the system/user/repo .gitignore
         /// </summary>
         /// <param name="rules">The content of a .gitignore file that will be applied.</param>
-        public void AddTemporaryRules(string rules)
+        public void AddTemporaryRules(IEnumerable<string> rules)
         {
-            Proxy.git_ignore_add_rule(repo.Handle, rules);
+            var allRules = rules.Aggregate(new StringBuilder(), (acc, x) =>
+            {
+                acc.Append(x);
+                acc.Append("\n");
+                return acc;
+            });
+
+            Proxy.git_ignore_add_rule(repo.Handle, allRules.ToString());
         }
 
         /// <summary>
