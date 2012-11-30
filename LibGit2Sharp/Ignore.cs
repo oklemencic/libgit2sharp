@@ -26,7 +26,7 @@ namespace LibGit2Sharp
         ///   to the standard .gitignore rules that would apply as a result of the system/user/repo .gitignore
         /// </summary>
         /// <param name="rules">The content of a .gitignore file that will be applied.</param>
-        public void AddCustomIgnoreRules(string rules)
+        public void AddTemporaryRules(string rules)
         {
             Ensure.Success(NativeMethods.git_ignore_add_rule(repo.Handle, rules));
         }
@@ -35,7 +35,7 @@ namespace LibGit2Sharp
         ///   Resets all custom rules that were applied via calls to <see cref="Repository.AddCustomIgnoreRules"/> - note that
         ///   this will not affect the application of the user/repo .gitignores.
         /// </summary>
-        public void ResetAllCustomIgnoreRules()
+        public void ResetAllTemporaryRules()
         {
             Ensure.Success(NativeMethods.git_ignore_clear_internal_rules(repo.Handle));
         }
