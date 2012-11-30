@@ -28,7 +28,7 @@ namespace LibGit2Sharp
         /// <param name="rules">The content of a .gitignore file that will be applied.</param>
         public void AddTemporaryRules(string rules)
         {
-            Ensure.Success(NativeMethods.git_ignore_add_rule(repo.Handle, rules));
+            Proxy.git_ignore_add_rule(repo.Handle, rules);
         }
 
         /// <summary>
@@ -37,7 +37,7 @@ namespace LibGit2Sharp
         /// </summary>
         public void ResetAllTemporaryRules()
         {
-            Ensure.Success(NativeMethods.git_ignore_clear_internal_rules(repo.Handle));
+            Proxy.git_ignore_clear_internal_rules(repo.Handle);
         }
 
         /// <summary>
@@ -48,10 +48,7 @@ namespace LibGit2Sharp
         /// <returns>true if the path should be ignored.</returns>
         public bool IsPathIgnored(string relativePath)
         {
-            int ignored;
-            Ensure.Success(NativeMethods.git_ignore_path_is_ignored(out ignored, repo.Handle, relativePath));
-
-            return (ignored != 0);
+            return Proxy.git_ignore_path_is_ignored(repo.Handle, relativePath));
         }
     }
 }
