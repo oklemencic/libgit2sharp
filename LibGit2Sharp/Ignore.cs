@@ -48,7 +48,7 @@ namespace LibGit2Sharp
         /// <returns>true if the path should be ignored.</returns>
         public bool IsPathIgnored(string relativePath)
         {
-            return Proxy.git_ignore_path_is_ignored(repo.Handle, relativePath));
+            return Proxy.git_ignore_path_is_ignored(repo.Handle, relativePath);
         }
     }
 }
