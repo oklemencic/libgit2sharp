@@ -32,6 +32,7 @@ namespace LibGit2Sharp
         private readonly NoteCollection notes;
         private readonly Lazy<ObjectDatabase> odb;
         private readonly Stack<IDisposable> toCleanup = new Stack<IDisposable>();
+        private readonly Ignore ignore;
         private static readonly Lazy<string> versionRetriever = new Lazy<string>(RetrieveVersion);
 
         /// <summary>
@@ -100,6 +101,7 @@ namespace LibGit2Sharp
             odb = new Lazy<ObjectDatabase>(() => new ObjectDatabase(this));
             diff = new Diff(this);
             notes = new NoteCollection(this);
+            ignore = new Ignore(this);
         }
 
         /// <summary>
@@ -155,6 +157,17 @@ namespace LibGit2Sharp
                 }
 
                 return index;
+            }
+        }
+
+        /// <summary>
+        ///   Manipulate the currently ignored files.
+        /// </summary>
+        public Ignore Ignore
+        {
+            get
+            {
+                return Ignore;
             }
         }
 
@@ -574,39 +587,6 @@ namespace LibGit2Sharp
             TreeChanges changes = Diff.Compare(commit.Tree, DiffTarget.Index, paths);
 
             Index.Reset(changes);
-        }
-
-        /// <summary>
-        ///   Adds a custom .gitignore rule that will be applied to futher operations to the Index. This is in addition
-        ///   to the standard .gitignore rules that would apply as a result of the system/user/repo .gitignore
-        /// </summary>
-        /// <param name="rules">The content of a .gitignore file that will be applied.</param>
-        public void AddCustomIgnoreRules(string rules)
-        {
-            Ensure.Success(NativeMethods.git_ignore_add_rule(Handle, rules));
-        }
-
-        /// <summary>
-        ///   Resets all custom rules that were applied via calls to <see cref="Repository.AddCustomIgnoreRules"/> - note that
-        ///   this will not affect the application of the user/repo .gitignores.
-        /// </summary>
-        public void ResetAllCustomIgnoreRules()
-        {
-            Ensure.Success(NativeMethods.git_ignore_clear_internal_rules(Handle));
-        }
-
-        /// <summary>
-        ///    Given a relative path, this method determines whether a path should be ignored, checking
-        ///    both the custom ignore rules as well as the "normal" .gitignores.
-        /// </summary>
-        /// <param name="relativePath">A path relative to the repository</param>
-        /// <returns>true if the path should be ignored.</returns>
-        public bool IsPathIgnored(string relativePath)
-        {
-            int ignored;
-            Ensure.Success(NativeMethods.git_ignore_path_is_ignored(out ignored, Handle, relativePath));
-
-            return (ignored != 0);
         }
 
         /// <summary>
