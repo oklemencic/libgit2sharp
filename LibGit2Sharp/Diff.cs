@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
 using LibGit2Sharp.Core;
+using LibGit2Sharp.Core.Compat;
 using LibGit2Sharp.Core.Handles;
 
 namespace LibGit2Sharp
@@ -15,20 +18,27 @@ namespace LibGit2Sharp
     {
         private readonly Repository repo;
 
-        private static GitDiffOptions BuildOptions(IEnumerable<string> paths = null)
+        private GitDiffOptions BuildOptions(DiffOptions diffOptions, IEnumerable<string> paths = null)
         {
             var options = new GitDiffOptions();
+
+            if (diffOptions.HasFlag(DiffOptions.IncludeUntracked))
+            {
+                options.Flags |= GitDiffOptionFlags.GIT_DIFF_INCLUDE_UNTRACKED |
+                GitDiffOptionFlags.GIT_DIFF_RECURSE_UNTRACKED_DIRS |
+                GitDiffOptionFlags.GIT_DIFF_INCLUDE_UNTRACKED_CONTENT;
+            }
 
             if (paths == null)
             {
                 return options;
             }
 
-            options.PathSpec = GitStrArrayIn.BuildFrom(ToFilePaths(paths));
+            options.PathSpec = GitStrArrayIn.BuildFrom(ToFilePaths(repo, paths));
             return options;
         }
 
-        private static FilePath[] ToFilePaths(IEnumerable<string> paths)
+        private static FilePath[] ToFilePaths(Repository repo, IEnumerable<string> paths)
         {
             var filePaths = new List<FilePath>();
 
@@ -39,7 +49,7 @@ namespace LibGit2Sharp
                     throw new ArgumentException("At least one provided path is either null or empty.", "paths");
                 }
 
-                filePaths.Add(path);
+                filePaths.Add(BuildRelativePathFrom(repo, path));
             }
 
             if (filePaths.Count == 0)
@@ -48,6 +58,26 @@ namespace LibGit2Sharp
             }
 
             return filePaths.ToArray();
+        }
+
+        private static string BuildRelativePathFrom(Repository repo, string path)
+        {
+            //TODO: To be removed when libgit2 natively implements this
+            if (!Path.IsPathRooted(path))
+            {
+                return path;
+            }
+
+            string normalizedPath = Path.GetFullPath(path);
+
+            if (!normalizedPath.StartsWith(repo.Info.WorkingDirectory, StringComparison.Ordinal))
+            {
+                throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
+                                                          "Unable to process file '{0}'. This absolute filepath escapes out of the working directory of the repository ('{1}').",
+                                                          normalizedPath, repo.Info.WorkingDirectory));
+            }
+
+            return normalizedPath.Substring(repo.Info.WorkingDirectory.Length);
         }
 
         /// <summary>
@@ -70,11 +100,7 @@ namespace LibGit2Sharp
         /// <returns>A <see cref = "TreeChanges"/> containing the changes between the <paramref name = "oldTree"/> and the <paramref name = "newTree"/>.</returns>
         public virtual TreeChanges Compare(Tree oldTree, Tree newTree, IEnumerable<string> paths = null)
         {
-            //TODO: The checks below will be removed when running against next libgit2 binaries
-            Ensure.ArgumentNotNull(oldTree, "oldTree");
-            Ensure.ArgumentNotNull(newTree, "newTree");
-
-            using(GitDiffOptions options = BuildOptions(paths))
+            using(GitDiffOptions options = BuildOptions(DiffOptions.None, paths))
             using (DiffListSafeHandle diff = BuildDiffListFromTrees(
                 oldTree != null ? oldTree.Id : null,
                 newTree != null ? newTree.Id : null,
@@ -86,7 +112,7 @@ namespace LibGit2Sharp
 
         private DiffListSafeHandle BuildDiffListFromTrees(ObjectId oldTree, ObjectId newTree, GitDiffOptions options)
         {
-            return Proxy.git_diff_tree_to_tree(repo.Handle, options, oldTree, newTree);
+            return Proxy.git_diff_tree_to_tree(repo.Handle, oldTree, newTree, options);
         }
 
         /// <summary>
@@ -97,21 +123,21 @@ namespace LibGit2Sharp
         /// <returns>A <see cref = "ContentChanges"/> containing the changes between the <paramref name = "oldBlob"/> and the <paramref name = "newBlob"/>.</returns>
         public virtual ContentChanges Compare(Blob oldBlob, Blob newBlob)
         {
-            using (GitDiffOptions options = BuildOptions())
+            using (GitDiffOptions options = BuildOptions(DiffOptions.None))
             {
                 return new ContentChanges(repo, oldBlob, newBlob, options);
             }
         }
 
-        private readonly IDictionary<DiffTarget, Func<Repository, TreeComparisonHandleRetriever>> handleRetrieverDispatcher = BuildHandleRetrieverDispatcher();
+        private readonly IDictionary<DiffTargets, Func<Repository, TreeComparisonHandleRetriever>> handleRetrieverDispatcher = BuildHandleRetrieverDispatcher();
 
-        private static IDictionary<DiffTarget, Func<Repository, TreeComparisonHandleRetriever>> BuildHandleRetrieverDispatcher()
+        private static IDictionary<DiffTargets, Func<Repository, TreeComparisonHandleRetriever>> BuildHandleRetrieverDispatcher()
         {
-            return new Dictionary<DiffTarget, Func<Repository, TreeComparisonHandleRetriever>>
+            return new Dictionary<DiffTargets, Func<Repository, TreeComparisonHandleRetriever>>
                        {
-                           { DiffTarget.Index, r => IndexToTree(r) },
-                           { DiffTarget.WorkingDirectory, r => WorkdirToTree(r) },
-                           { DiffTarget.BothWorkingDirectoryAndIndex, r => WorkdirAndIndexToTree(r) },
+                           { DiffTargets.Index, IndexToTree },
+                           { DiffTargets.WorkingDirectory, WorkdirToTree },
+                           { DiffTargets.Index | DiffTargets.WorkingDirectory, WorkdirAndIndexToTree },
                        };
         }
 
@@ -122,14 +148,47 @@ namespace LibGit2Sharp
         /// <param name = "diffTarget">The target to compare to.</param>
         /// <param name = "paths">The list of paths (either files or directories) that should be compared.</param>
         /// <returns>A <see cref = "TreeChanges"/> containing the changes between the <see cref="Tree"/> and the selected target.</returns>
+        [Obsolete("This method will be removed in the next release. Please use Compare(Tree, Tree, DiffTargets, IEnumerable<string>) instead.")]
         public virtual TreeChanges Compare(Tree oldTree, DiffTarget diffTarget, IEnumerable<string> paths = null)
         {
-            Ensure.ArgumentNotNull(oldTree, "oldTree");
+            DiffTargets targets;
 
-            var comparer = handleRetrieverDispatcher[diffTarget](repo);
+            switch (diffTarget)
+            {
+                case DiffTarget.Index:
+                    targets = DiffTargets.Index;
+                    break;
 
-            using (GitDiffOptions options = BuildOptions(paths))
-            using (DiffListSafeHandle dl = BuildDiffListFromTreeAndComparer(oldTree.Id, comparer, options))
+                case DiffTarget.WorkingDirectory:
+                    targets = DiffTargets.WorkingDirectory;
+                    break;
+
+                default:
+                    targets = DiffTargets.Index | DiffTargets.WorkingDirectory;
+                    break;
+            }
+
+            return Compare(oldTree, targets, paths);
+        }
+
+        /// <summary>
+        ///   Show changes between a <see cref = "Tree"/> and the Index, the Working Directory, or both.
+        /// </summary>
+        /// <param name = "oldTree">The <see cref = "Tree"/> to compare from.</param>
+        /// <param name = "diffTargets">The targets to compare to.</param>
+        /// <param name = "paths">The list of paths (either files or directories) that should be compared.</param>
+        /// <returns>A <see cref = "TreeChanges"/> containing the changes between the <see cref="Tree"/> and the selected target.</returns>
+        public virtual TreeChanges Compare(Tree oldTree, DiffTargets diffTargets, IEnumerable<string> paths = null)
+        {
+            var comparer = handleRetrieverDispatcher[diffTargets](repo);
+
+            DiffOptions diffOptions = diffTargets.HasFlag(DiffTargets.WorkingDirectory) ?
+                DiffOptions.IncludeUntracked : DiffOptions.None;
+
+            using (GitDiffOptions options = BuildOptions(diffOptions, paths))
+            using (DiffListSafeHandle dl = BuildDiffListFromTreeAndComparer(
+                oldTree != null ? oldTree.Id : null,
+                comparer, options))
             {
                 return new TreeChanges(dl);
             }
@@ -144,7 +203,7 @@ namespace LibGit2Sharp
         {
             var comparer = WorkdirToIndex(repo);
 
-            using (GitDiffOptions options = BuildOptions(paths))
+            using (GitDiffOptions options = BuildOptions(DiffOptions.None, paths))
             using (DiffListSafeHandle dl = BuildDiffListFromComparer(null, comparer, options))
             {
                 return new TreeChanges(dl);
@@ -155,12 +214,12 @@ namespace LibGit2Sharp
 
         private static TreeComparisonHandleRetriever WorkdirToIndex(Repository repo)
         {
-            return (h, o) => Proxy.git_diff_workdir_to_index(repo.Handle, o);
+            return (h, o) => Proxy.git_diff_index_to_workdir(repo.Handle, repo.Index.Handle, o);
         }
 
         private static TreeComparisonHandleRetriever WorkdirToTree(Repository repo)
         {
-            return (h, o) => Proxy.git_diff_workdir_to_tree(repo.Handle, o, h);
+            return (h, o) => Proxy.git_diff_tree_to_workdir(repo.Handle, h, o);
         }
 
         private static TreeComparisonHandleRetriever WorkdirAndIndexToTree(Repository repo)
@@ -171,8 +230,8 @@ namespace LibGit2Sharp
 
                 try
                 {
-                    diff = Proxy.git_diff_index_to_tree(repo.Handle, o, h);
-                    diff2 = Proxy.git_diff_workdir_to_index(repo.Handle, o);
+                    diff = Proxy.git_diff_tree_to_index(repo.Handle, repo.Index.Handle, h, o);
+                    diff2 = Proxy.git_diff_index_to_workdir(repo.Handle, repo.Index.Handle, o);
                     Proxy.git_diff_merge(diff, diff2);
                 }
                 catch
@@ -193,7 +252,7 @@ namespace LibGit2Sharp
 
         private static TreeComparisonHandleRetriever IndexToTree(Repository repo)
         {
-            return (h, o) => Proxy.git_diff_index_to_tree(repo.Handle, o, h);
+            return (h, o) => Proxy.git_diff_tree_to_index(repo.Handle, repo.Index.Handle, h, o);
         }
 
         private static DiffListSafeHandle BuildDiffListFromTreeAndComparer(ObjectId treeId, TreeComparisonHandleRetriever comparisonHandleRetriever, GitDiffOptions options)

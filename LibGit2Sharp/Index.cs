@@ -59,6 +59,14 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
+        ///   Determines if the index is free from conflicts.
+        /// </summary>
+        public virtual bool IsFullyMerged
+        {
+            get { return !Proxy.git_index_has_conflicts(handle); }
+        }
+        
+        /// <summary>
         ///   Gets the <see cref = "IndexEntry" /> with the specified relative path.
         /// </summary>
         public virtual IndexEntry this[string path]
@@ -72,11 +80,11 @@ namespace LibGit2Sharp
             }
         }
 
-        private IndexEntry this[uint index]
+        private IndexEntry this[int index]
         {
             get
             {
-                IndexEntrySafeHandle entryHandle = Proxy.git_index_get_byindex(handle, index);
+                IndexEntrySafeHandle entryHandle = Proxy.git_index_get_byindex(handle, (UIntPtr)index);
                 return IndexEntry.BuildFromPtr(repo, entryHandle);
             }
         }
@@ -102,7 +110,7 @@ namespace LibGit2Sharp
         {
             var list = new List<IndexEntry>();
 
-            for (uint i = 0; i < Count; i++)
+            for (int i = 0; i < Count; i++)
             {
                 list.Add(this[i]);
             }
@@ -160,7 +168,7 @@ namespace LibGit2Sharp
                     throw new NotImplementedException();
                 }
 
-                if (!kvp.Value.Has(FileStatus.Nonexistent))
+                if (!kvp.Value.HasFlag(FileStatus.Nonexistent))
                 {
                     continue;
                 }
@@ -173,7 +181,7 @@ namespace LibGit2Sharp
                 string relativePath = kvp.Key;
                 FileStatus fileStatus = kvp.Value;
 
-                if (fileStatus.Has(FileStatus.Missing))
+                if (fileStatus.HasFlag(FileStatus.Missing))
                 {
                     RemoveFromIndex(relativePath);
                 }
@@ -203,7 +211,18 @@ namespace LibGit2Sharp
         /// <param name = "paths">The collection of paths of the files within the working directory.</param>
         public virtual void Unstage(IEnumerable<string> paths)
         {
-            repo.Reset("HEAD", paths);
+            Ensure.ArgumentNotNull(paths, "paths");
+
+            if (repo.Info.IsHeadOrphaned)
+            {
+                TreeChanges changes = repo.Diff.Compare(null, DiffTargets.Index, paths);
+
+                Reset(changes);
+            }
+            else
+            {
+                repo.Reset("HEAD", paths);
+            }
         }
 
         /// <summary>
@@ -459,12 +478,6 @@ namespace LibGit2Sharp
             return new RepositoryStatus(repo);
         }
 
-        internal void ReplaceContentWithTree(Tree tree)
-        {
-            Proxy.git_index_read_tree(repo.Handle, handle, tree);
-            UpdatePhysicalIndex();
-        }
-
         internal void Reset(TreeChanges changes)
         {
             foreach (TreeEntryChanges treeEntryChanges in changes)
@@ -504,7 +517,11 @@ namespace LibGit2Sharp
 
         private string DebuggerDisplay
         {
-            get { return string.Format("Count = {0}", Count); }
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Count = {0}", Count);
+            }
         }
     }
 }

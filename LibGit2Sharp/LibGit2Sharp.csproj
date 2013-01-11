@@ -55,7 +55,7 @@
     <Reference Include="System.Core" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="AmbiguousException.cs" />
+    <Compile Include="AmbiguousSpecificationException.cs" />
     <Compile Include="BareRepositoryException.cs" />
     <Compile Include="Blob.cs" />
     <Compile Include="BlobExtensions.cs" />
@@ -69,22 +69,33 @@
     <Compile Include="CommitLog.cs" />
     <Compile Include="Configuration.cs" />
     <Compile Include="ConfigurationEntry.cs" />
+    <Compile Include="ConfigurationExtensions.cs" />
     <Compile Include="ContentChanges.cs" />
+    <Compile Include="InvalidSpecificationException.cs" />
+    <Compile Include="Core\Compat\EnumExtensions.cs" />
     <Compile Include="Core\GitCheckoutOpts.cs" />
+    <Compile Include="Core\GitCloneOptions.cs" />
     <Compile Include="Core\GitConfigEntry.cs" />
     <Compile Include="Core\GitObjectLazyGroup.cs" />
     <Compile Include="Core\GitTransferProgress.cs" />
     <Compile Include="Core\Handles\NullGitObjectSafeHandle.cs" />
+    <Compile Include="Core\Handles\NullIndexSafeHandle.cs" />
     <Compile Include="Core\ILazy.cs" />
     <Compile Include="Core\LazyGroup.cs" />
+    <Compile Include="Core\Handles\GitConfigEntryHandle.cs" />
     <Compile Include="Core\Proxy.cs" />
+    <Compile Include="DiffOptions.cs" />
+    <Compile Include="DiffTargets.cs" />
     <Compile Include="Handlers.cs" />
     <Compile Include="Ignore.cs" />
     <Compile Include="MergeConflictException.cs" />
+    <Compile Include="NameConflictException.cs" />
     <Compile Include="ReferenceCollectionExtensions.cs" />
     <Compile Include="Core\GitRemoteCallbacks.cs" />
     <Compile Include="RemoteCallbacks.cs" />
     <Compile Include="RemoteCompletionType.cs" />
+    <Compile Include="CurrentOperation.cs" />
+    <Compile Include="StageLevel.cs" />
     <Compile Include="TagCollectionExtensions.cs" />
     <Compile Include="Core\Compat\Environment.cs" />
     <Compile Include="Core\FilePath.cs" />
@@ -101,8 +112,6 @@
     <Compile Include="Core\GitDirection.cs" />
     <Compile Include="Core\GitError.cs" />
     <Compile Include="Core\GitErrorCategory.cs" />
-    <Compile Include="Core\GitNoteData.cs" />
-    <Compile Include="Core\GitObjectExtensions.cs" />
     <Compile Include="Core\GitOdbBackend.cs" />
     <Compile Include="Core\GitOdbBackendStream.cs" />
     <Compile Include="Core\Handles\GitErrorSafeHandle.cs" />
@@ -115,7 +124,6 @@
     <Compile Include="Core\Handles\OidSafeHandle.cs" />
     <Compile Include="Core\Handles\TreeBuilderSafeHandle.cs" />
     <Compile Include="Core\Handles\TreeEntrySafeHandle_Owned.cs" />
-    <Compile Include="Core\ReferenceExtensions.cs" />
     <Compile Include="Core\Handles\ReferenceSafeHandle.cs" />
     <Compile Include="Core\Handles\SignatureSafeHandle.cs" />
     <Compile Include="Core\Handles\TreeEntrySafeHandle.cs" />

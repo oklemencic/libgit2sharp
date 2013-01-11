@@ -104,14 +104,14 @@ namespace LibGit2Sharp
         /// <summary>
         ///   Requests that this backend enumerate all items in the backing store.
         /// </summary>
-        public abstract int Foreach(ForeachCallback callback);
+        public abstract int ForEach(ForEachCallback callback);
 
         /// <summary>
         ///   The signature of the callback method provided to the Foreach method.
         /// </summary>
         /// <param name="oid">The object ID of the object in the backing store.</param>
         /// <returns>A non-negative result indicates the enumeration should continue. Otherwise, the enumeration should stop.</returns>
-        public delegate int ForeachCallback(byte[] oid);
+        public delegate int ForEachCallback(byte[] oid);
 
         private IntPtr nativeBackendPointer;
 
@@ -122,6 +122,7 @@ namespace LibGit2Sharp
                 if (IntPtr.Zero == nativeBackendPointer)
                 {
                     var nativeBackend = new GitOdbBackend();
+                    nativeBackend.Version = 1;
 
                     // The "free" entry point is always provided.
                     nativeBackend.Free = BackendEntryPoints.FreeCallback;
@@ -143,6 +144,11 @@ namespace LibGit2Sharp
                         nativeBackend.ReadHeader = BackendEntryPoints.ReadHeaderCallback;
                     }
 
+                    if ((supportedOperations & OdbBackendOperations.ReadStream) != 0)
+                    {
+                        nativeBackend.ReadStream = BackendEntryPoints.ReadStreamCallback;
+                    }
+
                     if ((supportedOperations & OdbBackendOperations.Write) != 0)
                     {
                         nativeBackend.Write = BackendEntryPoints.WriteCallback;
@@ -158,9 +164,9 @@ namespace LibGit2Sharp
                         nativeBackend.Exists = BackendEntryPoints.ExistsCallback;
                     }
 
-                    if ((supportedOperations & OdbBackendOperations.Foreach) != 0)
+                    if ((supportedOperations & OdbBackendOperations.ForEach) != 0)
                     {
-                        nativeBackend.Foreach = BackendEntryPoints.ForeachCallback;
+                        nativeBackend.Foreach = BackendEntryPoints.ForEachCallback;
                     }
 
                     nativeBackend.GCHandle = GCHandle.ToIntPtr(GCHandle.Alloc(this));
@@ -181,10 +187,11 @@ namespace LibGit2Sharp
             public static GitOdbBackend.read_callback ReadCallback = new GitOdbBackend.read_callback(Read);
             public static GitOdbBackend.read_prefix_callback ReadPrefixCallback = new GitOdbBackend.read_prefix_callback(ReadPrefix);
             public static GitOdbBackend.read_header_callback ReadHeaderCallback = new GitOdbBackend.read_header_callback(ReadHeader);
+            public static GitOdbBackend.readstream_callback ReadStreamCallback = new GitOdbBackend.readstream_callback(ReadStream);
             public static GitOdbBackend.write_callback WriteCallback = new GitOdbBackend.write_callback(Write);
             public static GitOdbBackend.writestream_callback WriteStreamCallback = new GitOdbBackend.writestream_callback(WriteStream);
             public static GitOdbBackend.exists_callback ExistsCallback = new GitOdbBackend.exists_callback(Exists);
-            public static GitOdbBackend.foreach_callback ForeachCallback = new GitOdbBackend.foreach_callback(Foreach);
+            public static GitOdbBackend.foreach_callback ForEachCallback = new GitOdbBackend.foreach_callback(Foreach);
             public static GitOdbBackend.free_callback FreeCallback = new GitOdbBackend.free_callback(Free);
 
             private unsafe static int Read(
@@ -251,7 +258,7 @@ namespace LibGit2Sharp
                 out GitObjectType type_p,
                 IntPtr backend,
                 ref GitOid short_oid,
-                uint len)
+                UIntPtr len)
             {
                 out_oid = default(GitOid);
                 buffer_p = IntPtr.Zero;
@@ -270,7 +277,7 @@ namespace LibGit2Sharp
                     {
                         // The length of short_oid is described in characters (40 per full ID) vs. bytes (20)
                         // which is what we care about.
-                        byte[] shortOidArray = new byte[len >> 1];
+                        byte[] shortOidArray = new byte[(long)len >> 1];
                         Array.Copy(short_oid.Id, shortOidArray, shortOidArray.Length);
 
                         int toReturn = odbBackend.ReadPrefix(shortOidArray, out oid, out dataStream, out objectType);
@@ -485,7 +492,7 @@ namespace LibGit2Sharp
                 {
                     try
                     {
-                        return odbBackend.Foreach(new ForeachState(cb, data).ManagedCallback);
+                        return odbBackend.ForEach(new ForeachState(cb, data).ManagedCallback);
                     }
                     catch (Exception ex)
                     {
@@ -532,7 +539,7 @@ namespace LibGit2Sharp
                     return cb(ref gitOid, data);
                 }
 
-                public ForeachCallback ManagedCallback;
+                public ForEachCallback ManagedCallback;
 
                 private GitOdbBackend.foreach_callback_callback cb;
                 private IntPtr data;                
@@ -583,7 +590,7 @@ namespace LibGit2Sharp
             /// <summary>
             ///   This OdbBackend declares that it supports the Foreach method.
             /// </summary>
-            Foreach = 128,
+            ForEach = 128,
         }
     }
 }

@@ -1,7 +1,4 @@
-﻿using System;
-using LibGit2Sharp.Core;
-
-namespace LibGit2Sharp
+﻿namespace LibGit2Sharp
 {
     /// <summary>
     ///   A Tag
@@ -55,15 +52,13 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Returns the friendly shortened name from a canonical name.
+        ///   Removes redundent leading namespaces (regarding the kind of
+        ///   reference being wrapped) from the canonical name.
         /// </summary>
-        /// <param name="canonicalName">The canonical name to shorten.</param>
-        /// <returns></returns>
-        protected override string Shorten(string canonicalName)
+        /// <returns>The friendly shortened name</returns>
+        protected override string Shorten()
         {
-            Ensure.ArgumentConformsTo(canonicalName, s => s.StartsWith("refs/tags/", StringComparison.Ordinal), "tagName");
-
-            return canonicalName.Substring("refs/tags/".Length);
+            return CanonicalName.Substring("refs/tags/".Length);
         }
     }
 }

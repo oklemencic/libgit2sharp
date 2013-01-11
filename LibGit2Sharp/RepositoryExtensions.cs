@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Handlers;
 
@@ -105,10 +106,53 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name = "repository">The <see cref = "Repository" /> being worked with.</param>
         /// <param name = "branchName">The name of the branch to create.</param>
-        /// <param name = "commitish">The revparse spec for the target commit.</param>
-        public static Branch CreateBranch(this IRepository repository, string branchName, string commitish)
+        /// <param name = "committish">The revparse spec for the target commit.</param>
+        public static Branch CreateBranch(this IRepository repository, string branchName, string committish)
         {
-            return repository.Branches.Add(branchName, commitish);
+            return repository.Branches.Add(branchName, committish);
+        }
+
+        /// <summary>
+        ///   Sets the current <see cref="Repository.Head"/> /> to the specified commit and optionally resets the <see cref = "Index" /> and
+        ///   the content of the working tree to match.
+        /// </summary>
+        /// <param name = "repository">The <see cref = "Repository" /> being worked with.</param>
+        /// <param name = "resetOptions">Flavor of reset operation to perform.</param>
+        /// <param name = "committish">A revparse spec for the target commit object.</param>
+        public static void Reset(this IRepository repository, ResetOptions resetOptions, string committish = "HEAD")
+        {
+            Ensure.ArgumentNotNullOrEmptyString(committish, "committish");
+
+            Commit commit = LookUpCommit(repository, committish);
+
+            repository.Reset(resetOptions, commit);
+        }
+
+        /// <summary>
+        ///   Replaces entries in the <see cref="Index"/> with entries from the specified commit.
+        /// </summary>
+        /// <param name = "repository">The <see cref = "Repository" /> being worked with.</param>
+        /// <param name = "committish">A revparse spec for the target commit object.</param>
+        /// <param name = "paths">The list of paths (either files or directories) that should be considered.</param>
+        public static void Reset(this IRepository repository, string committish = "HEAD", IEnumerable<string> paths = null)
+        {
+            if (repository.Info.IsBare)
+            {
+                throw new BareRepositoryException("Reset is not allowed in a bare repository");
+            }
+
+            Ensure.ArgumentNotNullOrEmptyString(committish, "committish");
+
+            Commit commit = LookUpCommit(repository, committish);
+
+            repository.Reset(commit, paths);
+        }
+
+        private static Commit LookUpCommit(IRepository repository, string committish)
+        {
+            GitObject obj = repository.Lookup(committish);
+            Ensure.GitObjectIsNotNull(obj, committish);
+            return obj.DereferenceToCommit(true);
         }
 
         /// <summary>
@@ -173,15 +217,38 @@ namespace LibGit2Sharp
 
         private static Signature BuildSignatureFromGlobalConfiguration(IRepository repository, DateTimeOffset now)
         {
-            var name = repository.Config.Get<string>("user.name", null);
-            var email = repository.Config.Get<string>("user.email", null);
+            var name = repository.Config.Get<string>("user.name");
+            var email = repository.Config.Get<string>("user.email");
 
             if ((name == null) || (email == null))
             {
                 throw new LibGit2SharpException("Can not find Name and Email settings of the current user in Git configuration.");
             }
 
-            return new Signature(name, email, now);
+            return new Signature(name.Value, email.Value, now);
+        }
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />, reference or SHA.
+        /// </summary>
+        /// <param name="repository">The <see cref = "Repository" /> being worked with.</param>
+        /// <param name = "commitOrBranchSpec">A revparse spec for the commit or branch to checkout.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public static Branch Checkout(this IRepository repository, string commitOrBranchSpec)
+        {
+            return repository.Checkout(commitOrBranchSpec, CheckoutOptions.None, null);
+        }
+
+
+        /// <summary>
+        ///   Checkout the specified <see cref = "Branch" />.
+        /// </summary>
+        /// <param name="repository">The <see cref = "Repository" /> being worked with.</param>
+        /// <param name="branch">The <see cref = "Branch" /> to check out.</param>
+        /// <returns>The <see cref = "Branch" /> that was checked out.</returns>
+        public static Branch Checkout(this IRepository repository, Branch branch)
+        {
+            return repository.Checkout(branch, CheckoutOptions.None, null);
         }
     }
 }

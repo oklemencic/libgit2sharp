@@ -7,9 +7,17 @@
         {
         }
 
-        protected override string Shorten(string branchName)
+        protected override string Shorten()
         {
-            return branchName;
+            return CanonicalName;
+        }
+
+        /// <summary>
+        ///   Gets the remote branch which is connected to this local one, or null if there is none.
+        /// </summary>
+        public override Branch TrackedBranch
+        {
+            get { return null; }
         }
     }
 }

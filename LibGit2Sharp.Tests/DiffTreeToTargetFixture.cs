@@ -44,7 +44,8 @@ namespace LibGit2Sharp.Tests
             {
                 SetUpSimpleDiffContext(repo);
 
-                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.WorkingDirectory);
+                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree,
+                    DiffTargets.WorkingDirectory);
 
                 var expected = new StringBuilder()
                     .Append("diff --git a/file.txt b/file.txt\n")
@@ -57,6 +58,29 @@ namespace LibGit2Sharp.Tests
                     .Append("+!!!\n");
 
                 Assert.Equal(expected.ToString(), changes.Patch);
+            }
+        }
+
+        [Fact]
+        public void CanCompareAMoreComplexTreeAgainstTheWorkdir()
+        {
+            using (var repo = new Repository(StandardTestRepoPath))
+            {
+                Tree tree = repo.Head.Tip.Tree;
+
+                TreeChanges changes = repo.Diff.Compare(tree, DiffTarget.WorkingDirectory);
+                Assert.NotNull(changes);
+
+                Assert.Equal(6, changes.Count());
+
+                Assert.Equal(new[] { "deleted_staged_file.txt", "deleted_unstaged_file.txt" },
+                    changes.Deleted.Select(tec => tec.Path));
+
+                Assert.Equal(new[] { "new_tracked_file.txt", "new_untracked_file.txt" },
+                    changes.Added.Select(tec => tec.Path));
+
+                Assert.Equal(new[] { "modified_staged_file.txt", "modified_unstaged_file.txt" },
+                    changes.Modified.Select(tec => tec.Path));
             }
         }
 
@@ -80,7 +104,8 @@ namespace LibGit2Sharp.Tests
             {
                 SetUpSimpleDiffContext(repo);
 
-                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.BothWorkingDirectoryAndIndex);
+                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree,
+                    DiffTargets.Index | DiffTargets.WorkingDirectory);
 
                 var expected = new StringBuilder()
                     .Append("diff --git a/file.txt b/file.txt\n")
@@ -95,7 +120,6 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(expected.ToString(), changes.Patch);
             }
         }
-
 
         [Fact]
         /*
@@ -136,7 +160,8 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(FileStatus.Removed | FileStatus.Untracked, state);
 
 
-                TreeChanges wrkDirToIdxToTree = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.BothWorkingDirectoryAndIndex);
+                TreeChanges wrkDirToIdxToTree = repo.Diff.Compare(repo.Head.Tip.Tree,
+                    DiffTargets.Index | DiffTargets.WorkingDirectory);
                 var expected = new StringBuilder()
                     .Append("diff --git a/file.txt b/file.txt\n")
                     .Append("deleted file mode 100644\n")
@@ -148,7 +173,8 @@ namespace LibGit2Sharp.Tests
 
                 Assert.Equal(expected.ToString(), wrkDirToIdxToTree.Patch);
 
-                TreeChanges wrkDirToTree = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.WorkingDirectory);
+                TreeChanges wrkDirToTree = repo.Diff.Compare(repo.Head.Tip.Tree,
+                    DiffTargets.WorkingDirectory);
                 expected = new StringBuilder()
                     .Append("diff --git a/file.txt b/file.txt\n")
                     .Append("index ce01362..4f125e3 100644\n")
@@ -182,7 +208,8 @@ namespace LibGit2Sharp.Tests
             {
                 SetUpSimpleDiffContext(repo);
 
-                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.Index);
+                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree,
+                    DiffTargets.Index);
 
                 var expected = new StringBuilder()
                     .Append("diff --git a/file.txt b/file.txt\n")
@@ -228,7 +255,7 @@ namespace LibGit2Sharp.Tests
             {
                 Tree tree = repo.Head.Tip.Tree;
 
-                TreeChanges changes = repo.Diff.Compare(tree, DiffTarget.Index);
+                TreeChanges changes = repo.Diff.Compare(tree, DiffTargets.Index);
                 Assert.NotNull(changes);
 
                 Assert.Equal(3, changes.Count());
@@ -255,7 +282,9 @@ namespace LibGit2Sharp.Tests
             {
                 Tree tree = repo.Head.Tip.Tree;
 
-                TreeChanges changes = repo.Diff.Compare(tree, DiffTarget.Index, new[] { "deleted_staged_file.txt", "1/branch_file.txt", "I-do/not-exist" });
+                TreeChanges changes = repo.Diff.Compare(tree, DiffTargets.Index,
+                    new[] { "deleted_staged_file.txt", "1/branch_file.txt", "I-do/not-exist" });
+
                 Assert.NotNull(changes);
 
                 Assert.Equal(1, changes.Count());
@@ -296,7 +325,7 @@ namespace LibGit2Sharp.Tests
                 File.AppendAllText(fullpath, "\n");
                 repo.Index.Stage("file.txt");
 
-                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTarget.Index);
+                TreeChanges changes = repo.Diff.Compare(repo.Head.Tip.Tree, DiffTargets.Index);
                 Assert.Equal(1, changes.Modified.Count());
                 Assert.Equal(1, changes.LinesAdded);
                 Assert.Equal(1, changes.LinesDeleted);
@@ -312,6 +341,80 @@ namespace LibGit2Sharp.Tests
                     .Append("+a\n");
 
                 Assert.Equal(expected.ToString(), changes.Patch);
+            }
+        }
+
+        [Fact]
+        public void ComparingATreeInABareRepositoryAgainstTheWorkDirOrTheIndexThrows()
+        {
+            using (var repo = new Repository(BareTestRepoPath))
+            {
+                Assert.Throws<BareRepositoryException>(
+                    () => repo.Diff.Compare(repo.Head.Tip.Tree, DiffTargets.WorkingDirectory));
+                Assert.Throws<BareRepositoryException>(
+                    () => repo.Diff.Compare(repo.Head.Tip.Tree, DiffTargets.Index));
+                Assert.Throws<BareRepositoryException>(
+                    () => repo.Diff.Compare(repo.Head.Tip.Tree, DiffTargets.WorkingDirectory | DiffTargets.Index));
+            }
+        }
+
+        [Fact]
+        public void CanCompareANullTreeAgainstTheIndex()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            using (var repo = Repository.Init(scd.RootedDirectoryPath))
+            {
+                SetUpSimpleDiffContext(repo);
+
+                TreeChanges changes = repo.Diff.Compare(null,
+                    DiffTargets.Index);
+
+                Assert.Equal(1, changes.Count());
+                Assert.Equal(1, changes.Added.Count());
+
+                Assert.Equal("file.txt", changes.Added.Single().Path);
+                Assert.Equal(2, changes.Added.Single().LinesAdded);
+            }
+        }
+
+        [Fact]
+        public void CanCompareANullTreeAgainstTheWorkdir()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            using (var repo = Repository.Init(scd.RootedDirectoryPath))
+            {
+                SetUpSimpleDiffContext(repo);
+
+                TreeChanges changes = repo.Diff.Compare(null,
+                    DiffTargets.WorkingDirectory);
+
+                Assert.Equal(1, changes.Count());
+                Assert.Equal(1, changes.Added.Count());
+
+                Assert.Equal("file.txt", changes.Added.Single().Path);
+                Assert.Equal(3, changes.Added.Single().LinesAdded);
+            }
+        }
+
+        [Fact]
+        public void CanCompareANullTreeAgainstTheWorkdirAndTheIndex()
+        {
+            var scd = BuildSelfCleaningDirectory();
+
+            using (var repo = Repository.Init(scd.RootedDirectoryPath))
+            {
+                SetUpSimpleDiffContext(repo);
+
+                TreeChanges changes = repo.Diff.Compare(null,
+                    DiffTargets.WorkingDirectory | DiffTargets.Index);
+
+                Assert.Equal(1, changes.Count());
+                Assert.Equal(1, changes.Added.Count());
+
+                Assert.Equal("file.txt", changes.Added.Single().Path);
+                Assert.Equal(3, changes.Added.Single().LinesAdded);
             }
         }
     }

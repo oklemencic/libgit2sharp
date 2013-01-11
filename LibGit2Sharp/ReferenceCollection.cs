@@ -2,6 +2,7 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
@@ -212,7 +213,8 @@ namespace LibGit2Sharp
                     return Add("HEAD", target as DirectReference, true);
                 }
 
-                throw new ArgumentException(string.Format("'{0}' is not a valid target type.", typeof(T)));
+                throw new ArgumentException(string.Format(CultureInfo.InvariantCulture,
+                    "'{0}' is not a valid target type.", typeof(T)));
             }
 
             using (ReferenceSafeHandle referencePtr = RetrieveReferencePtr(reference.CanonicalName))
@@ -260,9 +262,25 @@ namespace LibGit2Sharp
             return Proxy.git_reference_is_valid_name(canonicalName);
         }
 
+        /// <summary>
+        ///   Shortcut to return the HEAD reference.
+        /// </summary>
+        /// <returns>
+        ///   A <see cref="DirectReference"/> if the HEAD is detached;
+        ///   otherwise a <see cref="SymbolicReference"/>.
+        /// </returns>
+        public virtual Reference Head
+        {
+            get { return this["HEAD"]; }
+        }
+
         private string DebuggerDisplay
         {
-            get { return string.Format("Count = {0}", this.Count()); }
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Count = {0}", this.Count());
+            }
         }
     }
 }

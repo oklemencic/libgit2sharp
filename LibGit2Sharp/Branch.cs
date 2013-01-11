@@ -169,15 +169,22 @@ namespace LibGit2Sharp
         {
             get
             {
-                string remoteName = repo.Config.Get<string>("branch", Name, "remote", null);
-                Remote remote = null;
+                ConfigurationEntry<string> remoteEntry = repo.Config.Get<string>("branch", Name, "remote");
 
-                if (!string.IsNullOrEmpty(remoteName))
+                if (remoteEntry == null)
                 {
-                    remote = repo.Remotes[remoteName];
+                    return null;
                 }
 
-                return remote;
+                string remoteName = remoteEntry.Value;
+
+                if (string.IsNullOrEmpty(remoteName) ||
+                    string.Equals(remoteName, ".", StringComparison.Ordinal))
+                {
+                    return null;
+                }
+
+                return repo.Remotes[remoteName];
             }
         }
 
@@ -186,7 +193,7 @@ namespace LibGit2Sharp
         /// </summary>
         public virtual void Checkout()
         {
-            repo.CheckoutInternal(CanonicalName, CheckoutOptions.None, null);
+            repo.Checkout(this);
         }
 
         /// <summary>
@@ -196,7 +203,7 @@ namespace LibGit2Sharp
         /// <param name="onCheckoutProgress">Callback method to report checkout progress updates through.</param>
         public virtual void Checkout(CheckoutOptions checkoutOptions, CheckoutProgressHandler onCheckoutProgress)
         {
-            repo.CheckoutInternal(CanonicalName, checkoutOptions, onCheckoutProgress);
+            repo.Checkout(this, checkoutOptions, onCheckoutProgress);
         }
 
         private Branch ResolveTrackedBranch()
@@ -227,23 +234,25 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Returns the friendly shortened name from a canonical name.
+        ///   Removes redundent leading namespaces (regarding the kind of
+        ///   reference being wrapped) from the canonical name.
         /// </summary>
-        /// <param name="canonicalName">The canonical name to shorten.</param>
-        /// <returns></returns>
-        protected override string Shorten(string canonicalName)
+        /// <returns>The friendly shortened name</returns>
+        protected override string Shorten()
         {
-            if (canonicalName.StartsWith("refs/heads/", StringComparison.Ordinal))
+            if (CanonicalName.StartsWith("refs/heads/", StringComparison.Ordinal))
             {
-                return canonicalName.Substring("refs/heads/".Length);
+                return CanonicalName.Substring("refs/heads/".Length);
             }
 
-            if (canonicalName.StartsWith("refs/remotes/", StringComparison.Ordinal))
+            if (CanonicalName.StartsWith("refs/remotes/", StringComparison.Ordinal))
             {
-                return canonicalName.Substring("refs/remotes/".Length);
+                return CanonicalName.Substring("refs/remotes/".Length);
             }
 
-            throw new ArgumentException(string.Format(CultureInfo.InvariantCulture, "'{0}' does not look like a valid branch name.", canonicalName));
+            throw new ArgumentException(
+                string.Format(CultureInfo.InvariantCulture,
+                    "'{0}' does not look like a valid branch name.", CanonicalName));
         }
     }
 }
