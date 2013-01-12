@@ -146,6 +146,7 @@ namespace LibGit2Sharp.Tests
         public void CanProvideDifferentConfigurationFilesToARepository()
         {
             string globalLocation = Path.Combine(newWorkdir, "my-global-config");
+            string xdgLocation = Path.Combine(newWorkdir, "my-xdg-config");
             string systemLocation = Path.Combine(newWorkdir, "my-system-config");
 
             const string name = "Adam 'aroben' Roben";
@@ -157,22 +158,93 @@ namespace LibGit2Sharp.Tests
                 .AppendFormat("email = {0}{1}", email, Environment.NewLine);
 
             File.WriteAllText(globalLocation, sb.ToString());
+            File.WriteAllText(systemLocation, string.Empty);
+            File.WriteAllText(xdgLocation, string.Empty);
 
             var options = new RepositoryOptions {
                 GlobalConfigurationLocation = globalLocation,
+                XdgConfigurationLocation = xdgLocation,
                 SystemConfigurationLocation = systemLocation,
             };
 
             using (var repo = new Repository(BareTestRepoPath, options))
             {
-                Assert.True(repo.Config.HasGlobalConfig);
-                Assert.Equal(name, repo.Config.Get<string>("user", "name", null));
-                Assert.Equal(email, repo.Config.Get<string>("user", "email", null));
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.Global));
+                Assert.Equal(name, repo.Config.Get<string>("user.name").Value);
+                Assert.Equal(email, repo.Config.Get<string>("user.email").Value);
 
+                repo.Config.Set("xdg.setting", "https://twitter.com/libgit2sharp", ConfigurationLevel.Xdg);
                 repo.Config.Set("help.link", "https://twitter.com/xpaulbettsx/status/205761932626636800", ConfigurationLevel.System);
             }
 
             AssertValueInConfigFile(systemLocation, "xpaulbettsx");
+        }
+
+        [Fact]
+        public void CanProvideDifferentWorkingDirOnInit()
+        {
+            SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
+            var options = new RepositoryOptions {WorkingDirectoryPath = newWorkdir};
+
+            using (var repo = Repository.Init(scd.DirectoryPath, false, options))
+            {
+                Assert.Equal(Path.GetFullPath(newWorkdir) + Path.DirectorySeparatorChar, repo.Info.WorkingDirectory);
+            }
+        }
+
+        [Fact]
+        public void CanProvideDifferentConfigurationFilesOnInit()
+        {
+            SelfCleaningDirectory scd = BuildSelfCleaningDirectory();
+            var options = BuildFakeConfigs(scd);
+
+            using (var repo = Repository.Init(scd.DirectoryPath, false, options))
+            {
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.Global));
+                Assert.Equal("global", repo.Config.Get<string>("woot.this-rocks").Value);
+                Assert.Equal(42, repo.Config.Get<int>("wow.man-I-am-totally-global").Value);
+
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.Xdg));
+                Assert.Equal("xdg", repo.Config.Get<string>("woot.this-rocks", ConfigurationLevel.Xdg).Value);
+
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.System));
+                Assert.Equal("system", repo.Config.Get<string>("woot.this-rocks", ConfigurationLevel.System).Value);
+            }
+        }
+
+        [Fact]
+        public void CanProvideDifferentWorkingDirOnClone()
+        {
+            string url = "https://github.com/libgit2/TestGitRepository";
+            var scd = BuildSelfCleaningDirectory();
+            var options = new RepositoryOptions { WorkingDirectoryPath = newWorkdir };
+
+            using (var repo = Repository.Clone(url, scd.DirectoryPath, false, true, null, null, options))
+            {
+                Assert.Equal(Path.GetFullPath(newWorkdir) + Path.DirectorySeparatorChar, repo.Info.WorkingDirectory);
+            }
+        }
+
+        [Fact]
+        public void CanProvideDifferentConfigurationFilesOnClone()
+        {
+            string url = "https://github.com/libgit2/TestGitRepository";
+            var scd = BuildSelfCleaningDirectory();
+            var configScd = BuildSelfCleaningDirectory();
+            var options = BuildFakeConfigs(configScd);
+
+            using (var repo = Repository.Clone(url, scd.DirectoryPath, false, true, null, null, options))
+            {
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.Global));
+                Assert.Equal("global", repo.Config.Get<string>("woot.this-rocks").Value);
+                Assert.Equal(42, repo.Config.Get<int>("wow.man-I-am-totally-global").Value);
+
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.Xdg));
+                Assert.Equal("xdg", repo.Config.Get<string>("woot.this-rocks", ConfigurationLevel.Xdg).Value);
+
+                Assert.True(repo.Config.HasConfig(ConfigurationLevel.System));
+                Assert.Equal("system", repo.Config.Get<string>("woot.this-rocks", ConfigurationLevel.System).Value);
+            }
         }
     }
 }

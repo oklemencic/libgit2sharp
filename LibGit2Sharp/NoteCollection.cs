@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
@@ -112,7 +113,8 @@ namespace LibGit2Sharp
 
                 string canonicalNamespace = NormalizeToCanonicalName(@namespace);
 
-                return Proxy.git_note_foreach(repo.Handle, canonicalNamespace, n => RetrieveNote(new ObjectId(n.TargetOid), canonicalNamespace));
+                return Proxy.git_note_foreach(repo.Handle, canonicalNamespace,
+                    (blobId,annotatedObjId) => RetrieveNote(new ObjectId(annotatedObjId), canonicalNamespace));
             }
         }
 
@@ -177,7 +179,7 @@ namespace LibGit2Sharp
 
             Remove(targetId, author, committer, @namespace);
 
-            Proxy.git_note_create(repo.Handle, author, committer, canonicalNamespace, targetId, message);
+            Proxy.git_note_create(repo.Handle, author, committer, canonicalNamespace, targetId, message, true);
 
             return RetrieveNote(targetId, canonicalNamespace);
         }
@@ -231,7 +233,11 @@ namespace LibGit2Sharp
 
         private string DebuggerDisplay
         {
-            get { return string.Format("Count = {0}", this.Count()); }
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Count = {0}", this.Count());
+            }
         }
     }
 }

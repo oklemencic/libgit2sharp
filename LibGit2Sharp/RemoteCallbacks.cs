@@ -1,8 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Text;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Handlers;
 
@@ -44,7 +40,7 @@ namespace LibGit2Sharp
 
         internal GitRemoteCallbacks GenerateCallbacks()
         {
-            GitRemoteCallbacks callbacks = new GitRemoteCallbacks();
+            GitRemoteCallbacks callbacks = new GitRemoteCallbacks {version = 1};
 
             if (Progress != null)
             {
@@ -80,7 +76,7 @@ namespace LibGit2Sharp
 
             if (onProgress != null)
             {
-                string message = Utf8Marshaler.FromNative(str, (uint)len);
+                string message = Utf8Marshaler.FromNative(str, len);
                 onProgress(message);
             }
         }

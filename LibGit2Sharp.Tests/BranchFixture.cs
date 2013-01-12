@@ -552,7 +552,7 @@ namespace LibGit2Sharp.Tests
         {
             using (var repo = new Repository(BareTestRepoPath))
             {
-                Assert.Throws<LibGit2SharpException>(() => repo.Branches.Move("br2", "test"));
+                Assert.Throws<NameConflictException>(() => repo.Branches.Move("br2", "test"));
             }
         }
 
@@ -578,6 +578,23 @@ namespace LibGit2Sharp.Tests
                 Assert.Equal(newBranch, newTest);
 
                 Assert.Equal(br2.Tip, newTest.Tip);
+            }
+        }
+
+        [Fact]
+        public void DetachedHeadIsNotATrackingBranch()
+        {
+            TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
+            using (var repo = new Repository(path.DirectoryPath))
+            {
+                repo.Reset(ResetOptions.Hard);
+                repo.RemoveUntrackedFiles();
+
+                string headSha = repo.Head.Tip.Sha;
+                repo.Checkout(headSha);
+
+                Assert.False(repo.Head.IsTracking);
+                Assert.Null(repo.Head.TrackedBranch);
             }
         }
     }

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.Linq;
 using System.Text;
 using LibGit2Sharp.Core;
@@ -48,9 +49,9 @@ namespace LibGit2Sharp
             Proxy.git_diff_print_patch(diff, PrintCallBack);
         }
 
-        private int PrintCallBack(IntPtr data, GitDiffDelta delta, GitDiffRange range, GitDiffLineOrigin lineorigin, IntPtr content, uint contentlen)
+        private int PrintCallBack(GitDiffDelta delta, GitDiffRange range, GitDiffLineOrigin lineorigin, IntPtr content, UIntPtr contentlen, IntPtr payload)
         {
-            string formattedoutput = Utf8Marshaler.FromNative(content, contentlen);
+            string formattedoutput = Utf8Marshaler.FromNative(content, (int)contentlen);
 
             TreeEntryChanges currentChange = AddFileChange(delta, lineorigin);
             AddLineChange(currentChange, lineorigin);
@@ -89,6 +90,11 @@ namespace LibGit2Sharp
             var oldMode = (Mode)delta.OldFile.Mode;
             var newOid = new ObjectId(delta.NewFile.Oid);
             var oldOid = new ObjectId(delta.OldFile.Oid);
+
+            if (delta.Status == ChangeKind.Untracked)
+            {
+                delta.Status = ChangeKind.Added;
+            }
 
             var diffFile = new TreeEntryChanges(newFilePath, newMode, newOid, delta.Status, oldFilePath, oldMode, oldOid, delta.IsBinary());
 
@@ -193,7 +199,8 @@ namespace LibGit2Sharp
         {
             get
             {
-                return string.Format("Added: {0}, Deleted: {1}, Modified: {2}",
+                return string.Format(CultureInfo.InvariantCulture,
+                    "Added: {0}, Deleted: {1}, Modified: {2}",
                     Added.Count(), Deleted.Count(), Modified.Count());
             }
         }

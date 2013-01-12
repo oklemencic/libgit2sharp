@@ -58,6 +58,11 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="CheckoutFixture.cs" />
+    <Compile Include="CloneFixture.cs" />
+    <Compile Include="IgnoreFixture.cs" />
+    <Compile Include="MergeFixture.cs" />
+    <Compile Include="CleanFixture.cs" />
+    <Compile Include="CurrentOperationFixture.cs" />
     <Compile Include="MetaFixture.cs" />
     <Compile Include="MockedRepositoryFixture.cs" />
     <Compile Include="ConfigurationFixture.cs" />
@@ -94,7 +99,6 @@
     <Compile Include="TestHelpers\IPostTestDirectoryRemover.cs" />
     <Compile Include="TestHelpers\SelfCleaningDirectory.cs" />
     <Compile Include="TestHelpers\SignatureExtensions.cs" />
-    <Compile Include="TestHelpers\SkipException.cs" />
     <Compile Include="TestHelpers\SkippableFactAttribute.cs" />
     <Compile Include="TestHelpers\TemporaryCloneOfTestRepo.cs" />
     <Compile Include="TreeDefinitionFixture.cs" />

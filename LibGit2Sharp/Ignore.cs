@@ -26,16 +26,23 @@ namespace LibGit2Sharp
         ///   to the standard .gitignore rules that would apply as a result of the system/user/repo .gitignore
         /// </summary>
         /// <param name="rules">The content of a .gitignore file that will be applied.</param>
-        public void AddTemporaryRules(string rules)
+        public virtual void AddTemporaryRules(IEnumerable<string> rules)
         {
-            Proxy.git_ignore_add_rule(repo.Handle, rules);
+            var allRules = rules.Aggregate(new StringBuilder(), (acc, x) =>
+            {
+                acc.Append(x);
+                acc.Append("\n");
+                return acc;
+            });
+
+            Proxy.git_ignore_add_rule(repo.Handle, allRules.ToString());
         }
 
         /// <summary>
         ///   Resets all custom rules that were applied via calls to <see cref="Repository.AddCustomIgnoreRules"/> - note that
         ///   this will not affect the application of the user/repo .gitignores.
         /// </summary>
-        public void ResetAllTemporaryRules()
+        public virtual void ResetAllTemporaryRules()
         {
             Proxy.git_ignore_clear_internal_rules(repo.Handle);
         }
@@ -46,7 +53,7 @@ namespace LibGit2Sharp
         /// </summary>
         /// <param name="relativePath">A path relative to the repository</param>
         /// <returns>true if the path should be ignored.</returns>
-        public bool IsPathIgnored(string relativePath)
+        public virtual bool IsPathIgnored(string relativePath)
         {
             return Proxy.git_ignore_path_is_ignored(repo.Handle, relativePath);
         }

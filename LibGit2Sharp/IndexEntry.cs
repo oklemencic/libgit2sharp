@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
 
@@ -12,7 +13,7 @@ namespace LibGit2Sharp
     public class IndexEntry : IEquatable<IndexEntry>
     {
         private static readonly LambdaEqualityHelper<IndexEntry> equalityHelper =
-            new LambdaEqualityHelper<IndexEntry>(x => x.Path, x => x.Id, x => x.State);
+            new LambdaEqualityHelper<IndexEntry>(x => x.Path, x => x.Id, x => x.Mode, x => x.StageLevel);
 
         private Func<FileStatus> state;
 
@@ -37,6 +38,11 @@ namespace LibGit2Sharp
         public Mode Mode { get; private set; }
 
         /// <summary>
+        ///   Gets the stage number.
+        /// </summary>
+        public StageLevel StageLevel { get; private set; }
+
+        /// <summary>
         ///   Gets the id of the <see cref = "Blob" /> pointed at by this index entry.
         /// </summary>
         public ObjectId Id { get; private set; }
@@ -57,6 +63,7 @@ namespace LibGit2Sharp
                            Path = path.Native,
                            Id = new ObjectId(entry.oid),
                            state = () => repo.Index.RetrieveStatus(path.Native),
+                           StageLevel = Proxy.git_index_entry_stage(handle),
                            Mode = (Mode)entry.Mode
                        };
         }
@@ -114,7 +121,11 @@ namespace LibGit2Sharp
 
         private string DebuggerDisplay
         {
-            get { return string.Format("{0} => \"{1}\"", Path, Id.ToString(7)); }
+            get
+            {
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{0} => \"{1}\"", Path, Id.ToString(7));
+            }
         }
     }
 }

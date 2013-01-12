@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Compat;
 
@@ -56,7 +57,7 @@ namespace LibGit2Sharp
         /// </summary>
         public virtual string Name
         {
-            get { return Shorten(CanonicalName); }
+            get { return Shorten(); }
         }
 
         /// <summary>
@@ -77,11 +78,11 @@ namespace LibGit2Sharp
         }
 
         /// <summary>
-        ///   Returns the friendly shortened name from a canonical name.
+        ///   Removes redundent leading namespaces (regarding the kind of
+        ///   reference being wrapped) from the canonical name.
         /// </summary>
-        /// <param name="canonicalName">The canonical name to shorten.</param>
-        /// <returns></returns>
-        protected abstract string Shorten(string canonicalName);
+        /// <returns>The friendly shortened name</returns>
+        protected abstract string Shorten();
 
         private TObject RetrieveTargetObject(Reference reference)
         {
@@ -155,7 +156,8 @@ namespace LibGit2Sharp
         {
             get
             {
-                return string.Format("{0} => \"{1}\"", CanonicalName,
+                return string.Format(CultureInfo.InvariantCulture,
+                    "{0} => \"{1}\"", CanonicalName,
                     (TargetObject != null) ? TargetObject.Id.ToString(7) : "?");
             }
         }
