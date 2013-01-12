@@ -195,7 +195,7 @@ namespace LibGit2Sharp
         {
             get
             {
-                return Ignore;
+                return ignore;
             }
         }
 
