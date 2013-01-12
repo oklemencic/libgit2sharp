@@ -36,7 +36,17 @@ namespace LibGit2Sharp.Tests
             TemporaryCloneOfTestRepo path = BuildTemporaryCloneOfTestRepo(StandardTestRepoWorkingDirPath);
             using (var repo = new Repository(path.RepositoryPath))
             {
+                File.WriteAllText(Path.Combine(repo.Info.WorkingDirectory, "Foo.cs"), "Bar");
 
+                Assert.False(repo.Ignore.IsPathIgnored("Foo.cs"));
+
+                repo.Ignore.AddTemporaryRules(new[] { "*.cs" });
+
+                Assert.True(repo.Ignore.IsPathIgnored("Foo.cs"));
+
+                repo.Ignore.ResetAllTemporaryRules();
+
+                Assert.False(repo.Ignore.IsPathIgnored("Foo.cs"));
             }           
         }
     }
