@@ -139,7 +139,7 @@ namespace LibGit2Sharp.Tests.TestHelpers
             directories.Add(directoryPath);
         }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
 #if LEAKS
             GC.Collect();

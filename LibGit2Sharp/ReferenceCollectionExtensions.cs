@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using LibGit2Sharp.Core;
 using LibGit2Sharp.Core.Handles;
 
@@ -171,6 +173,45 @@ namespace LibGit2Sharp
             }
 
             refsColl.Remove(reference);
+        }
+
+        /// <summary>
+        /// Perform a reachability check: find all the <paramref name="refs"/> that can reach <paramref name="targets"/>,
+        /// given a set of commits to search.
+        /// </summary>
+        /// <param name="refs">The set of <see cref="Reference"/>s to search.</param>
+        /// <param name="targets">The set of <see cref="Commit"/>s that are interesting.</param>
+        /// <returns>A subset of <paramref name="refs"/> that is reachable from <paramref name="targets"/>.</returns>
+        public static IEnumerable<Reference> ReachableFrom(this IEnumerable<Reference> refs, IEnumerable<Commit> targets)
+        {
+            if (targets == null)
+            {
+                return Enumerable.Empty<Reference>();
+            }
+
+            var targetsSet = new HashSet<Commit>(targets);
+            if (targetsSet.Count == 0)
+            {
+                return Enumerable.Empty<Reference>();
+            }
+
+            var allCommits = targetsSet.First().repo.Commits;
+
+            var result = new List<Reference>();
+            foreach (var reference in refs)
+            {
+                foreach (var commit in allCommits.QueryBy(new Filter {Since = reference}))
+                {
+                    if (!targetsSet.Contains(commit))
+                    {
+                        continue;
+                    }
+                    result.Add(reference);
+                    break;
+                }
+            }
+
+            return result;
         }
     }
 }

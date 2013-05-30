@@ -778,5 +778,34 @@ namespace LibGit2Sharp.Tests
                 Assert.True(repo.Refs["refs/notes/commits"].IsNote());
             }
         }
+
+        [Fact]
+        public void CanQueryReachability()
+        {
+            using (var repo = new Repository(StandardTestRepoWorkingDirPath))
+            {
+                var result = repo.Refs.ReachableFrom(new[] { repo.Lookup<Commit>("f8d44d7"), repo.Lookup<Commit>("6dcf9bf") });
+                var expected = new []
+                {
+                    "refs/heads/diff-test-cases",
+                    "refs/heads/i-do-numbers",
+                    "refs/remotes/origin/test",
+                    "refs/tags/e90810b",
+                    "refs/tags/lw",
+                    "refs/tags/test",
+                };
+                Assert.Equal(expected, result.Select(x => x.CanonicalName).OrderBy(x => x).ToList());
+            }
+        }
+
+        [Fact]
+        public void CanHandleInvalidArguments()
+        {
+            using (var repo = new Repository(StandardTestRepoWorkingDirPath))
+            {
+                Assert.Empty(repo.Refs.ReachableFrom(null));
+                Assert.Empty(repo.Refs.ReachableFrom(new Commit[]{}));
+            }
+        }
     }
 }
